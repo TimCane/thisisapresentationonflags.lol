@@ -1,0 +1,4 @@
+pnpm-lock.yaml
+.devcontainer/devcontainer-lock.json
+dist
+.astro
