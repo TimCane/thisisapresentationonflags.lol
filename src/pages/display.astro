@@ -224,6 +224,11 @@ const initial = snapshot()
     .pcol:last-child {
       border-right: none;
     }
+    .crown {
+      height: 2.4vh;
+      font-size: 2.2vh;
+      line-height: 1;
+    }
     .pscore {
       font-size: 3.2vh;
       font-weight: 700;
@@ -351,11 +356,13 @@ const initial = snapshot()
     function renderScoreboard(rows: Snapshot['roster']) {
       const board = $('scoreboard')
       board.hidden = rows.length === 0
+      const top = rows.reduce((m, r) => Math.max(m, r.score), 0)
+      const soleLeader = top > 0 && rows.filter((r) => r.score === top).length === 1
       board.innerHTML = rows
-        .map(
-          (r) =>
-            `<div class="pcol"><span class="pscore">${r.score}</span><span class="pname">${escapeHtml(r.nickname)}</span></div>`,
-        )
+        .map((r) => {
+          const crown = soleLeader && r.score === top ? '\u{1F451}' : ''
+          return `<div class="pcol"><span class="crown">${crown}</span><span class="pscore">${r.score}</span><span class="pname">${escapeHtml(r.nickname)}</span></div>`
+        })
         .join('')
     }
 
