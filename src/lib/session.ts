@@ -1,17 +1,16 @@
-import { DECK } from './deck'
-import type { Option, Phase, Snapshot, ServerEvent } from './types'
+import { isQuiz } from './types'
+import type { BuiltSlide, DisplaySlide, Snapshot, ServerEvent, Phase } from './types'
 
-export type { Option, Phase, Snapshot, ServerEvent }
+export type { BuiltSlide, DisplaySlide, Snapshot, ServerEvent, Phase }
 
 type Player = { nickname: string; score: number }
 
 type Session = {
   code: string
   phase: Phase
-  deckIndex: number
-  flagCode: string | null
-  options: Option[]
-  answerIndex: number
+  index: number
+  total: number
+  slide: BuiltSlide | null
   guesses: Map<string, number>
   players: Map<string, Player>
   lastReactionAt: Map<string, number>
@@ -40,10 +39,9 @@ function freshSession(): Session {
   return {
     code: randomCode(),
     phase: 'lobby',
-    deckIndex: -1,
-    flagCode: null,
-    options: [],
-    answerIndex: -1,
+    index: -1,
+    total: 0,
+    slide: null,
     guesses: new Map(),
     players: new Map(),
     lastReactionAt: new Map(),
@@ -59,10 +57,36 @@ export function getSession(): Session | null {
   return store.session
 }
 
+function slotCount(slide: BuiltSlide): number {
+  if (slide.kind === 'guess-flag') return slide.options.length
+  if (slide.kind === 'which-flag') return slide.flags.length
+  return 0
+}
+
+function toDisplay(s: Session): DisplaySlide | null {
+  const slide = s.slide
+  if (!slide) return null
+  if (slide.kind === 'title')
+    return { kind: 'title', title: slide.title, subtitle: slide.subtitle, showCode: slide.showCode }
+  if (slide.kind === 'section')
+    return { kind: 'section', title: slide.title, subtitle: slide.subtitle }
+
+  const tally = new Array(slotCount(slide)).fill(0)
+  for (const idx of s.guesses.values()) tally[idx] = (tally[idx] ?? 0) + 1
+  const revealed = s.phase === 'revealed'
+  const common = {
+    tally,
+    answered: s.guesses.size,
+    revealed,
+    answerIndex: revealed ? slide.answerIndex : null,
+  }
+  if (slide.kind === 'guess-flag')
+    return { kind: 'guess-flag', flagCode: slide.flagCode, options: slide.options, ...common }
+  return { kind: 'which-flag', prompt: slide.prompt, flags: slide.flags, ...common }
+}
+
 export function snapshot(): Snapshot {
   const s = ensureSession()
-  const tally = new Array(s.options.length).fill(0)
-  for (const idx of s.guesses.values()) tally[idx] = (tally[idx] ?? 0) + 1
   const leaderboard = [...s.players.values()]
     .filter((p) => p.score > 0)
     .sort((a, b) => b.score - a.score)
@@ -71,18 +95,10 @@ export function snapshot(): Snapshot {
   return {
     code: s.code,
     phase: s.phase,
-    deckIndex: s.deckIndex,
-    deckSize: DECK.length,
+    index: s.index,
+    total: s.total,
     players: s.players.size,
-    question: s.flagCode
-      ? {
-          flagCode: s.flagCode,
-          options: s.options,
-          tally,
-          answered: s.guesses.size,
-          revealed: s.phase === 'revealed',
-        }
-      : null,
+    slide: toDisplay(s),
     leaderboard,
   }
 }
@@ -118,14 +134,13 @@ export function join(code: string, playerId: string, nickname: string): boolean 
   return true
 }
 
-export function openQuestion(deckIndex: number, flagCode: string, options: Option[]): void {
+export function openSlide(index: number, total: number, slide: BuiltSlide): void {
   const s = ensureSession()
-  s.deckIndex = deckIndex
-  s.flagCode = flagCode
-  s.options = options
-  s.answerIndex = options.findIndex((o) => o.code === flagCode)
+  s.index = index
+  s.total = total
+  s.slide = slide
   s.guesses = new Map()
-  s.phase = 'guessing'
+  s.phase = isQuiz(slide) ? 'guessing' : 'info'
   broadcastState()
 }
 
@@ -136,24 +151,24 @@ export function reveal(): void {
   broadcastState()
 }
 
-export function end(): void {
+export function end(total: number): void {
   const s = ensureSession()
   s.phase = 'ended'
-  s.flagCode = null
-  s.options = []
+  s.slide = null
+  s.index = total
+  s.total = total
   broadcastState()
 }
 
 export function recordGuess(code: string, playerId: string, optionIndex: number): boolean {
   const s = ensureSession()
-  if (code !== s.code || s.phase !== 'guessing') return false
+  if (code !== s.code || s.phase !== 'guessing' || !s.slide || !isQuiz(s.slide)) return false
   if (!s.players.has(playerId) || s.guesses.has(playerId)) return false
-  if (optionIndex < 0 || optionIndex >= s.options.length) return false
+  if (optionIndex < 0 || optionIndex >= slotCount(s.slide)) return false
   s.guesses.set(playerId, optionIndex)
-  if (optionIndex === s.answerIndex) {
-    const p = s.players.get(playerId)!
-    p.score += 1
-  }
+  const answerIndex =
+    s.slide.kind === 'guess-flag' || s.slide.kind === 'which-flag' ? s.slide.answerIndex : -1
+  if (optionIndex === answerIndex) s.players.get(playerId)!.score += 1
   broadcastState()
   return true
 }
