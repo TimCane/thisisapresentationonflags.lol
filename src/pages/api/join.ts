@@ -9,6 +9,8 @@ export const POST: APIRoute = async ({ request }) => {
   if (typeof code !== 'string' || typeof playerId !== 'string' || typeof nickname !== 'string')
     return json({ ok: false, error: 'bad request' }, 400)
   if (!nickname.trim()) return json({ ok: false, error: 'nickname required' }, 400)
-  const ok = join(code.toUpperCase(), playerId, nickname.trim())
-  return json({ ok, error: ok ? undefined : 'wrong code' }, ok ? 200 : 409)
+  const result = join(code.toUpperCase(), playerId, nickname.trim())
+  if (result === 'ok') return json({ ok: true })
+  const error = result === 'name-taken' ? 'That name is taken' : 'Wrong code'
+  return json({ ok: false, error }, 409)
 }

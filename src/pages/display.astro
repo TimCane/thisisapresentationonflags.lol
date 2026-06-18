@@ -434,8 +434,14 @@ const initial = snapshot()
         $('meta').textContent = ''
         if (!prizePlaying) {
           prizePlaying = true
-          stage.innerHTML = `<div class="bigcard prize"><p class="kicker">Prize #${s.prize.count}</p><h1>PRIZE TIME</h1><div id="rouletteName" class="rouletteName">&nbsp;</div></div>`
-          startRoulette(s.prize.winner)
+          if (s.prize.everyone) {
+            stage.innerHTML = `<div class="bigcard prize"><p class="kicker">Prize #${s.prize.count}</p><h1>PRIZE TIME</h1><div class="rouletteName landed">EVERYONE WINS! \u{1F389}</div></div>`
+            celebrate()
+            setTimeout(celebrate, 700)
+          } else {
+            stage.innerHTML = `<div class="bigcard prize"><p class="kicker">Prize #${s.prize.count}</p><h1>PRIZE TIME</h1><div id="rouletteName" class="rouletteName">&nbsp;</div></div>`
+            startRoulette(s.prize.winner ?? '')
+          }
         }
         return
       }

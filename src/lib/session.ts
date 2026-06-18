@@ -1,5 +1,5 @@
 import { isQuiz } from './types'
-import { PRIZE_CHANCE, PRIZE_MIN_GAP } from './constants'
+import { PRIZE_CHANCE, PRIZE_MIN_GAP, PRIZE_EVERYONE_CHANCE } from './constants'
 import type { BuiltSlide, DisplaySlide, Snapshot, ServerEvent, Phase } from './types'
 
 export type { BuiltSlide, DisplaySlide, Snapshot, ServerEvent, Phase }
@@ -16,7 +16,7 @@ type Session = {
   players: Map<string, Player>
   lastReactionAt: Map<string, number>
   prizesEnabled: boolean
-  prizeWinner: { nickname: string } | null
+  prizeWinner: { winner: string | null; everyone: boolean } | null
   prizeCount: number
   slidesSincePrize: number
 }
@@ -115,7 +115,7 @@ export function snapshot(): Snapshot {
     prizesEnabled: s.prizesEnabled,
     prize:
       s.phase === 'prize' && s.prizeWinner
-        ? { winner: s.prizeWinner.nickname, count: s.prizeCount }
+        ? { winner: s.prizeWinner.winner, everyone: s.prizeWinner.everyone, count: s.prizeCount }
         : null,
   }
 }
@@ -141,14 +141,21 @@ export function reset(): Snapshot {
   return snapshot()
 }
 
-export function join(code: string, playerId: string, nickname: string): boolean {
+export type JoinResult = 'ok' | 'wrong-code' | 'name-taken'
+
+export function join(code: string, playerId: string, nickname: string): JoinResult {
   const s = ensureSession()
-  if (code !== s.code) return false
+  if (code !== s.code) return 'wrong-code'
+  const name = nickname.slice(0, 24)
+  const taken = [...s.players.entries()].some(
+    ([id, p]) => id !== playerId && p.nickname.toLowerCase() === name.toLowerCase(),
+  )
+  if (taken) return 'name-taken'
   const existing = s.players.get(playerId)
-  if (existing) existing.nickname = nickname.slice(0, 24)
-  else s.players.set(playerId, { nickname: nickname.slice(0, 24), score: 0 })
+  if (existing) existing.nickname = name
+  else s.players.set(playerId, { nickname: name, score: 0 })
   broadcastState()
-  return true
+  return 'ok'
 }
 
 export function openSlide(index: number, total: number, slide: BuiltSlide): void {
@@ -182,8 +189,11 @@ export function firePrize(): boolean {
   const s = ensureSession()
   const ids = [...s.players.keys()]
   if (!ids.length) return false
-  const winner = s.players.get(ids[Math.floor(Math.random() * ids.length)])!
-  s.prizeWinner = { nickname: winner.nickname }
+  const everyone = Math.random() < PRIZE_EVERYONE_CHANCE
+  const winner = everyone
+    ? null
+    : s.players.get(ids[Math.floor(Math.random() * ids.length)])!.nickname
+  s.prizeWinner = { winner, everyone }
   s.prizeCount += 1
   s.slidesSincePrize = 0
   s.phase = 'prize'

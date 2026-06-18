@@ -256,8 +256,12 @@ const slidesMeta = slides.map((e) => {
       thumbs.innerHTML = ''
       if (snap.phase === 'prize' && snap.prize) {
         $('kind').textContent = `Prize #${snap.prize.count}`
-        $('headline').textContent = `Winner: ${snap.prize.winner}`
-        $('notes').textContent = 'Hand over a booster pack, then tap Continue.'
+        $('headline').textContent = snap.prize.everyone
+          ? 'Everyone wins!'
+          : `Winner: ${snap.prize.winner}`
+        $('notes').textContent = snap.prize.everyone
+          ? 'Hand a pack to everyone, then tap Continue.'
+          : 'Hand over a booster pack, then tap Continue.'
       } else if (!slide || !m) {
         $('kind').textContent = snap.phase === 'ended' ? 'Finished' : 'Lobby'
         $('headline').textContent =

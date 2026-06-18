@@ -57,8 +57,9 @@ export type Snapshot = {
   // the origin of each player's floating reactions.
   roster: { nickname: string; score: number }[]
   prizesEnabled: boolean
-  // Set only during the 'prize' phase; the chosen winner + which prize this is.
-  prize: { winner: string; count: number } | null
+  // Set only during the 'prize' phase. `everyone` means the whole room wins, so
+  // `winner` is null.
+  prize: { winner: string | null; everyone: boolean; count: number } | null
 }
 
 export type ServerEvent =

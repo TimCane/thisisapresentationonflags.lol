@@ -228,6 +228,10 @@ import { REACTIONS } from '@/lib/constants'
     let myGuess: { index: number; choice: number } | null = null
     let score = 0
     let lastScored = -1
+    // Hold the winner back until the display roulette would have landed.
+    let prizeKey = -1
+    let prizeRevealed = false
+    let prizeTimer: ReturnType<typeof setTimeout> | null = null
 
     ;($('code') as HTMLInputElement).value = joinedCode
     ;($('nick') as HTMLInputElement).value = nickname
@@ -297,6 +301,12 @@ import { REACTIONS } from '@/lib/constants'
 
     function render() {
       if (!snap) return
+      if (snap.phase !== 'prize' && prizeKey !== -1) {
+        prizeKey = -1
+        prizeRevealed = false
+        if (prizeTimer) clearTimeout(prizeTimer)
+        prizeTimer = null
+      }
       $('roomCode').textContent = snap.code
       $('me').textContent = `${nickname} - ${score} pts`
       const stage = $('stage')
@@ -305,8 +315,26 @@ import { REACTIONS } from '@/lib/constants'
       result.textContent = ''
 
       if (snap.phase === 'prize' && snap.prize) {
-        const mine = snap.prize.winner === nickname
-        stage.innerHTML = `<div class="info"><h2>PRIZE TIME</h2><p class="prizewin">${esc(snap.prize.winner)}</p><p class="muted">${mine ? 'You won a prize! \u{1F389}' : 'wins a prize'}</p></div>`
+        const p = snap.prize
+        if (prizeKey !== p.count) {
+          prizeKey = p.count
+          prizeRevealed = p.everyone
+          if (prizeTimer) clearTimeout(prizeTimer)
+          prizeTimer = p.everyone
+            ? null
+            : setTimeout(() => {
+                prizeRevealed = true
+                if (snap && snap.phase === 'prize') render()
+              }, 5400)
+        }
+        if (p.everyone) {
+          stage.innerHTML = `<div class="info"><h2>PRIZE TIME</h2><p class="prizewin">EVERYONE WINS! \u{1F389}</p><p class="muted">Grab a pack!</p></div>`
+        } else if (!prizeRevealed) {
+          stage.innerHTML = `<div class="info"><h2>PRIZE TIME</h2><p class="prizewin">?</p><p class="muted">Eyes on the screen...</p></div>`
+        } else {
+          const mine = p.winner === nickname
+          stage.innerHTML = `<div class="info"><h2>PRIZE TIME</h2><p class="prizewin">${esc(p.winner ?? '')}</p><p class="muted">${mine ? 'You won a prize! \u{1F389}' : 'wins a prize'}</p></div>`
+        }
         return
       }
 
