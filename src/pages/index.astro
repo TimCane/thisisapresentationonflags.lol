@@ -19,9 +19,7 @@ import { REACTIONS } from '@/lib/constants'
         <span>Room <b id="roomCode"></b></span>
         <span id="me"></span>
       </header>
-      <p id="status" class="muted"></p>
-      <div id="flagWrap" hidden><img id="flag" alt="flag" /></div>
-      <div id="options"></div>
+      <div id="stage"></div>
       <p id="result"></p>
       <div id="reactions">
         {
@@ -39,7 +37,7 @@ import { REACTIONS } from '@/lib/constants'
     #app {
       max-width: 480px;
       margin: 0 auto;
-      padding: 20px;
+      padding: 20px 20px 96px;
       min-height: 100%;
     }
     .card {
@@ -74,12 +72,9 @@ import { REACTIONS } from '@/lib/constants'
       text-align: center;
       font-weight: 700;
     }
-    .primary,
-    .react {
+    .primary {
       padding: 14px;
       font-size: 1.1rem;
-    }
-    .primary {
       background: var(--accent);
       border-color: var(--accent);
       font-weight: 700;
@@ -96,36 +91,63 @@ import { REACTIONS } from '@/lib/constants'
       padding: 10px 4px;
       color: var(--muted);
     }
-    #flagWrap {
+    .flagWrap {
       margin: 8px 0 16px;
     }
-    #flag {
+    .flagWrap img {
       width: 100%;
       border-radius: 10px;
       border: 1px solid var(--line);
       background: #fff;
     }
-    #options {
+    .prompt {
+      font-size: 1.3rem;
+      font-weight: 700;
+      text-align: center;
+      margin: 12px 0;
+    }
+    .options,
+    .numbers {
       display: grid;
       gap: 10px;
+    }
+    .numbers {
+      grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
     }
     .opt {
       padding: 16px;
       font-size: 1.1rem;
       text-align: left;
     }
-    .opt.correct {
+    .num {
+      padding: 22px 0;
+      font-size: 1.6rem;
+      font-weight: 700;
+      text-align: center;
+    }
+    .opt.correct,
+    .num.correct {
       background: var(--good);
       border-color: var(--good);
       color: #06210f;
       font-weight: 700;
     }
-    .opt.wrong {
+    .opt.wrong,
+    .num.wrong {
       background: var(--bad);
       border-color: var(--bad);
     }
-    .opt.mine {
+    .opt.mine,
+    .num.mine {
       outline: 2px solid var(--accent);
+    }
+    .info {
+      text-align: center;
+      margin-top: 8vh;
+    }
+    .info h2 {
+      font-size: 1.6rem;
+      margin: 0 0 6px;
     }
     #result {
       min-height: 1.4em;
@@ -145,6 +167,7 @@ import { REACTIONS } from '@/lib/constants'
     }
     .react {
       width: 52px;
+      padding: 12px 0;
       font-size: 1.5rem;
       line-height: 1;
     }
@@ -160,9 +183,9 @@ import { REACTIONS } from '@/lib/constants'
     let snap: Snapshot | null = null
     let joinedCode = localStorage.getItem('code') ?? ''
     let nickname = localStorage.getItem('nick') ?? ''
-    let myGuess: { flagCode: string; index: number } | null = null
+    let myGuess: { index: number; choice: number } | null = null
     let score = 0
-    let lastScored = ''
+    let lastScored = -1
 
     ;($('code') as HTMLInputElement).value = joinedCode
     ;($('nick') as HTMLInputElement).value = nickname
@@ -199,91 +222,117 @@ import { REACTIONS } from '@/lib/constants'
       })
     }
 
-    function guess(index: number) {
-      const q = snap?.question
-      if (!snap || snap.phase !== 'guessing' || !q) return
-      if (myGuess && myGuess.flagCode === q.flagCode) return
-      myGuess = { flagCode: q.flagCode, index }
-      post('/api/guess', { code: joinedCode, playerId: pid, optionIndex: index })
+    function guess(choice: number) {
+      if (!snap || snap.phase !== 'guessing' || !snap.slide) return
+      if (myGuess && myGuess.index === snap.index) return
+      myGuess = { index: snap.index, choice }
+      post('/api/guess', { code: joinedCode, playerId: pid, optionIndex: choice })
       render()
+    }
+
+    function makeButton(
+      cls: string,
+      label: string,
+      i: number,
+      enabled: boolean,
+    ): HTMLButtonElement {
+      const b = document.createElement('button')
+      b.className = cls
+      b.textContent = label
+      if (enabled) b.addEventListener('click', () => guess(i))
+      else b.disabled = true
+      return b
+    }
+
+    function decorate(b: HTMLButtonElement, i: number, correctIndex: number, revealed: boolean) {
+      const answered = !!myGuess && myGuess.index === snap!.index
+      if (answered && myGuess!.choice === i) b.classList.add('mine')
+      if (revealed) {
+        if (i === correctIndex) b.classList.add('correct')
+        else if (answered && myGuess!.choice === i) b.classList.add('wrong')
+      }
     }
 
     function render() {
       if (!snap) return
       $('roomCode').textContent = snap.code
       $('me').textContent = `${nickname} - ${score} pts`
-      const q = snap.question
-      const flagWrap = $('flagWrap')
-      const opts = $('options')
-      const status = $('status')
+      const stage = $('stage')
       const result = $('result')
+      stage.innerHTML = ''
+      result.textContent = ''
 
-      if (snap.phase === 'lobby' || !q) {
-        status.textContent =
-          snap.phase === 'ended'
-            ? "That's a wrap - thanks for playing!"
-            : 'Waiting for the next flag...'
-        flagWrap.hidden = true
-        opts.innerHTML = ''
-        result.textContent = ''
+      const slide = snap.slide
+      if (snap.phase === 'lobby' || !slide) {
+        stage.innerHTML = `<div class="info"><p class="muted">${
+          snap.phase === 'ended' ? "That's a wrap - thanks for playing!" : 'Waiting to start...'
+        }</p></div>`
         return
       }
 
-      status.textContent = ''
-      flagWrap.hidden = false
-      ;($('flag') as HTMLImageElement).src = flagUrl(q.flagCode)
-      const answered = !!myGuess && myGuess.flagCode === q.flagCode
-      const correctIndex = q.options.findIndex((o) => o.code === q.flagCode)
+      if (slide.kind === 'title' || slide.kind === 'section') {
+        const sub = slide.subtitle ? `<p class="muted">${slide.subtitle}</p>` : ''
+        stage.innerHTML = `<div class="info"><h2>${slide.title}</h2>${sub}<p class="muted">Eyes on the big screen.</p></div>`
+        return
+      }
 
-      opts.innerHTML = ''
-      q.options.forEach((o, i) => {
-        const b = document.createElement('button')
-        b.className = 'opt'
-        b.textContent = o.name
-        if (answered && myGuess!.index === i) b.classList.add('mine')
-        if (snap!.phase === 'revealed') {
-          if (i === correctIndex) b.classList.add('correct')
-          else if (answered && myGuess!.index === i) b.classList.add('wrong')
-          b.disabled = true
-        } else if (answered) {
-          b.disabled = true
-        } else {
-          b.addEventListener('click', () => guess(i))
-        }
-        opts.appendChild(b)
-      })
+      const revealed = snap.phase === 'revealed'
+      const answered = !!myGuess && myGuess.index === snap.index
+      const correctIndex = slide.answerIndex ?? -1
 
-      if (snap.phase === 'revealed') {
-        const right = answered && myGuess!.index === correctIndex
-        if (answered && right && lastScored !== q.flagCode) {
+      if (slide.kind === 'guess-flag') {
+        const wrap = document.createElement('div')
+        wrap.className = 'flagWrap'
+        wrap.innerHTML = `<img alt="flag" src="${flagUrl(slide.flagCode)}" />`
+        stage.appendChild(wrap)
+        const box = document.createElement('div')
+        box.className = 'options'
+        slide.options.forEach((o, i) => {
+          const b = makeButton('opt', o.name, i, !revealed && !answered)
+          decorate(b, i, correctIndex, revealed)
+          box.appendChild(b)
+        })
+        stage.appendChild(box)
+      } else {
+        const p = document.createElement('p')
+        p.className = 'prompt'
+        p.textContent = slide.prompt
+        stage.appendChild(p)
+        const box = document.createElement('div')
+        box.className = 'numbers'
+        slide.flags.forEach((_, i) => {
+          const b = makeButton('num', String(i + 1), i, !revealed && !answered)
+          decorate(b, i, correctIndex, revealed)
+          box.appendChild(b)
+        })
+        stage.appendChild(box)
+      }
+
+      if (revealed) {
+        const right = answered && myGuess!.choice === correctIndex
+        if (answered && right && lastScored !== snap.index) {
           score += 1
-          lastScored = q.flagCode
+          lastScored = snap.index
+          $('me').textContent = `${nickname} - ${score} pts`
         }
-        const answer = q.options[correctIndex]?.name ?? ''
-        result.textContent = !answered
-          ? `It was ${answer}.`
-          : right
-            ? 'Correct! +1'
-            : `Not quite - it was ${answer}.`
+        result.textContent = !answered ? '' : right ? 'Correct! +1' : 'Not quite.'
       } else {
         result.textContent = answered ? 'Locked in. Hold tight...' : ''
       }
     }
 
     connect((s) => {
-      // A new session (fresh code) means we were dropped - re-gate.
       if (joinedCode && s.code !== joinedCode && !$('game').hidden) {
         joinedCode = ''
         myGuess = null
         score = 0
-        lastScored = ''
+        lastScored = -1
         $('game').hidden = true
         $('gate').hidden = false
         $('gateError').textContent = 'New session started - enter the new code.'
       }
+      if (snap && myGuess && s.index !== snap.index) myGuess = null
       snap = s
-      if (myGuess && s.question && myGuess.flagCode !== s.question.flagCode) myGuess = null
-      // Auto-rejoin on reload if the stored code matches the live session.
       if ($('game').hidden && joinedCode && nickname && s.code === joinedCode) {
         doJoin(joinedCode, nickname, true)
       }

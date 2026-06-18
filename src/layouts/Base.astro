@@ -1,20 +1,21 @@
 ---
-import { DECK } from '@/lib/deck'
-
 interface Props {
   title: string
 }
 const { title } = Astro.props
 
-// Build code -> svg url for the deck flags; the only flags ever shown are the
-// current question's, always a deck flag. Embedded as JSON for the client.
+// code -> svg url for every flag, so any slide can reference any flag. Embedded
+// as JSON for the client to resolve images by code.
 const svgs = import.meta.glob('/src/content/flags/*/flag.svg', {
   eager: true,
   query: '?url',
   import: 'default',
 }) as Record<string, string>
 const flagUrls: Record<string, string> = {}
-for (const code of DECK) flagUrls[code] = svgs[`/src/content/flags/${code}/flag.svg`]
+for (const path in svgs) {
+  const m = path.match(/\/flags\/([^/]+)\/flag\.svg$/)
+  if (m) flagUrls[m[1]] = svgs[path]
+}
 ---
 
 <!doctype html>
@@ -40,6 +41,11 @@ for (const code of DECK) flagUrls[code] = svgs[`/src/content/flags/${code}/flag.
       }
       * {
         box-sizing: border-box;
+      }
+      /* An id selector that sets `display` would otherwise beat the UA [hidden]
+         rule, leaving "hidden" panels on screen. */
+      [hidden] {
+        display: none !important;
       }
       html,
       body {
