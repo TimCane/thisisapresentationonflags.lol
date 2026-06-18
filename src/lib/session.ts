@@ -82,16 +82,19 @@ function toDisplay(s: Session): DisplaySlide | null {
   }
   if (slide.kind === 'guess-flag')
     return { kind: 'guess-flag', flagCode: slide.flagCode, options: slide.options, ...common }
-  return { kind: 'which-flag', prompt: slide.prompt, flags: slide.flags, ...common }
+  return {
+    kind: 'which-flag',
+    prompt: slide.prompt,
+    flags: slide.flags,
+    answerName: revealed ? slide.answerName : null,
+    ...common,
+  }
 }
 
 export function snapshot(): Snapshot {
   const s = ensureSession()
-  const leaderboard = [...s.players.values()]
-    .filter((p) => p.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 8)
-    .map((p) => ({ nickname: p.nickname, score: p.score }))
+  // Stable join order so scoreboard columns and reaction origins do not jump.
+  const roster = [...s.players.values()].map((p) => ({ nickname: p.nickname, score: p.score }))
   return {
     code: s.code,
     phase: s.phase,
@@ -99,7 +102,7 @@ export function snapshot(): Snapshot {
     total: s.total,
     players: s.players.size,
     slide: toDisplay(s),
-    leaderboard,
+    roster,
   }
 }
 
@@ -146,7 +149,17 @@ export function openSlide(index: number, total: number, slide: BuiltSlide): void
 
 export function reveal(): void {
   const s = ensureSession()
-  if (s.phase !== 'guessing') return
+  if (s.phase !== 'guessing' || !s.slide) return
+  // Score at reveal, not at guess time, so the always-on scoreboard does not
+  // leak who guessed right mid-round.
+  const answerIndex =
+    s.slide.kind === 'guess-flag' || s.slide.kind === 'which-flag' ? s.slide.answerIndex : -1
+  for (const [pid, idx] of s.guesses) {
+    if (idx === answerIndex) {
+      const p = s.players.get(pid)
+      if (p) p.score += 1
+    }
+  }
   s.phase = 'revealed'
   broadcastState()
 }
@@ -165,10 +178,8 @@ export function recordGuess(code: string, playerId: string, optionIndex: number)
   if (code !== s.code || s.phase !== 'guessing' || !s.slide || !isQuiz(s.slide)) return false
   if (!s.players.has(playerId) || s.guesses.has(playerId)) return false
   if (optionIndex < 0 || optionIndex >= slotCount(s.slide)) return false
+  // Just record; scoring happens at reveal (see reveal()).
   s.guesses.set(playerId, optionIndex)
-  const answerIndex =
-    s.slide.kind === 'guess-flag' || s.slide.kind === 'which-flag' ? s.slide.answerIndex : -1
-  if (optionIndex === answerIndex) s.players.get(playerId)!.score += 1
   broadcastState()
   return true
 }
@@ -180,6 +191,7 @@ export function recordReaction(code: string, playerId: string, emoji: string): b
   const last = s.lastReactionAt.get(playerId) ?? 0
   if (now - last < 250) return false
   s.lastReactionAt.set(playerId, now)
-  broadcast({ type: 'reaction', emoji })
+  const slot = [...s.players.keys()].indexOf(playerId)
+  broadcast({ type: 'reaction', emoji, slot })
   return true
 }

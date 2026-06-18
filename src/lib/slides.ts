@@ -82,5 +82,6 @@ export async function buildSlide(index: number): Promise<BuiltSlide | null> {
     prompt: raw.prompt ?? `Which flag is ${answerName}?`,
     flags: raw.flags,
     answerIndex: raw.flags.indexOf(raw.answer),
+    answerName,
   }
 }

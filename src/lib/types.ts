@@ -9,7 +9,14 @@ export type BuiltSlide =
   | { kind: 'title'; notes: string; title: string; subtitle?: string; showCode: boolean }
   | { kind: 'section'; notes: string; title: string; subtitle?: string }
   | { kind: 'guess-flag'; notes: string; flagCode: string; options: Option[]; answerIndex: number }
-  | { kind: 'which-flag'; notes: string; prompt: string; flags: string[]; answerIndex: number }
+  | {
+      kind: 'which-flag'
+      notes: string
+      prompt: string
+      flags: string[]
+      answerIndex: number
+      answerName: string
+    }
 
 export function isQuiz(slide: BuiltSlide): boolean {
   return slide.kind === 'guess-flag' || slide.kind === 'which-flag'
@@ -36,6 +43,7 @@ export type DisplaySlide =
       answered: number
       revealed: boolean
       answerIndex: number | null
+      answerName: string | null
     }
 
 export type Snapshot = {
@@ -45,7 +53,11 @@ export type Snapshot = {
   total: number
   players: number
   slide: DisplaySlide | null
-  leaderboard: { nickname: string; score: number }[]
+  // All players in stable join order; column index drives the scoreboard and
+  // the origin of each player's floating reactions.
+  roster: { nickname: string; score: number }[]
 }
 
-export type ServerEvent = { type: 'state'; state: Snapshot } | { type: 'reaction'; emoji: string }
+export type ServerEvent =
+  | { type: 'state'; state: Snapshot }
+  | { type: 'reaction'; emoji: string; slot: number }
