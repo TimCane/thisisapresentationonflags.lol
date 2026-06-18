@@ -328,6 +328,7 @@ const initial = snapshot()
 
   <script>
     import { connect, flagUrl } from '@/lib/client'
+    import { REACTION_GROW, REACTION_MAX_SCALE } from '@/lib/constants'
     import type { Snapshot } from '@/lib/types'
 
     const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
@@ -468,22 +469,24 @@ const initial = snapshot()
       }
     }
 
-    function spawnFloater(emoji: string, leftVw: number) {
+    function spawnFloater(emoji: string, leftVw: number, scale = 1) {
       const span = document.createElement('span')
       span.className = 'floater'
       span.textContent = emoji
       span.style.left = leftVw + 'vw'
+      span.style.fontSize = 5 * scale + 'vmin'
       $('reactions').appendChild(span)
       setTimeout(() => span.remove(), 2700)
     }
 
     // Spawn the emoji within the sending player's scoreboard column so it rises
-    // out of their 1/N band.
-    function floatReaction(emoji: string, slot: number) {
+    // out of their 1/N band; a longer same-emoji streak makes it bigger.
+    function floatReaction(emoji: string, slot: number, streak: number) {
       const n = Math.max(roster.length, 1)
       const colW = 100 / n
       const base = slot >= 0 && slot < n ? slot * colW : Math.random() * 100
-      spawnFloater(emoji, base + Math.random() * colW)
+      const scale = Math.min(1 + (streak - 1) * REACTION_GROW, REACTION_MAX_SCALE)
+      spawnFloater(emoji, base + Math.random() * colW, scale)
     }
 
     function celebrate() {

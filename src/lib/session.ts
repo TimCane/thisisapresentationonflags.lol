@@ -1,10 +1,19 @@
 import { isQuiz } from './types'
-import { PRIZE_CHANCE, PRIZE_MIN_GAP, PRIZE_EVERYONE_CHANCE } from './constants'
+import {
+  PRIZE_CHANCE,
+  PRIZE_MIN_GAP,
+  PRIZE_EVERYONE_CHANCE,
+  SPEED_MAX_POINTS,
+  SPEED_WINDOW_MS,
+  SPEED_FLOOR,
+  REACTION_SPAM_WINDOW_MS,
+} from './constants'
 import type { BuiltSlide, DisplaySlide, Snapshot, ServerEvent, Phase } from './types'
 
 export type { BuiltSlide, DisplaySlide, Snapshot, ServerEvent, Phase }
 
 type Player = { nickname: string; score: number }
+type Guess = { index: number; at: number }
 
 type Session = {
   code: string
@@ -12,9 +21,10 @@ type Session = {
   index: number
   total: number
   slide: BuiltSlide | null
-  guesses: Map<string, number>
+  openedAt: number
+  guesses: Map<string, Guess>
   players: Map<string, Player>
-  lastReactionAt: Map<string, number>
+  lastReaction: Map<string, { emoji: string; at: number; streak: number }>
   prizesEnabled: boolean
   prizeWinner: { winner: string | null; everyone: boolean } | null
   prizeCount: number
@@ -47,9 +57,10 @@ function freshSession(): Session {
     index: -1,
     total: 0,
     slide: null,
+    openedAt: 0,
     guesses: new Map(),
     players: new Map(),
-    lastReactionAt: new Map(),
+    lastReaction: new Map(),
     prizesEnabled: true,
     prizeWinner: null,
     prizeCount: 0,
@@ -81,7 +92,7 @@ function toDisplay(s: Session): DisplaySlide | null {
     return { kind: 'section', title: slide.title, subtitle: slide.subtitle }
 
   const tally = new Array(slotCount(slide)).fill(0)
-  for (const idx of s.guesses.values()) tally[idx] = (tally[idx] ?? 0) + 1
+  for (const g of s.guesses.values()) tally[g.index] = (tally[g.index] ?? 0) + 1
   const revealed = s.phase === 'revealed'
   const common = {
     tally,
@@ -164,6 +175,7 @@ export function openSlide(index: number, total: number, slide: BuiltSlide): void
   s.total = total
   s.slide = slide
   s.guesses = new Map()
+  s.openedAt = Date.now()
   s.prizeWinner = null
   s.slidesSincePrize += 1
   s.phase = isQuiz(slide) ? 'guessing' : 'info'
@@ -201,6 +213,12 @@ export function firePrize(): boolean {
   return true
 }
 
+// Full points for an instant correct answer, decaying to the floor by the window.
+function speedPoints(elapsedMs: number): number {
+  const t = Math.min(Math.max(elapsedMs, 0), SPEED_WINDOW_MS) / SPEED_WINDOW_MS
+  return Math.round(SPEED_MAX_POINTS * (1 - t * (1 - SPEED_FLOOR)))
+}
+
 export function reveal(): void {
   const s = ensureSession()
   if (s.phase !== 'guessing' || !s.slide) return
@@ -208,10 +226,10 @@ export function reveal(): void {
   // leak who guessed right mid-round.
   const answerIndex =
     s.slide.kind === 'guess-flag' || s.slide.kind === 'which-flag' ? s.slide.answerIndex : -1
-  for (const [pid, idx] of s.guesses) {
-    if (idx === answerIndex) {
+  for (const [pid, g] of s.guesses) {
+    if (g.index === answerIndex) {
       const p = s.players.get(pid)
-      if (p) p.score += 1
+      if (p) p.score += speedPoints(g.at)
     }
   }
   s.phase = 'revealed'
@@ -233,8 +251,8 @@ export function recordGuess(code: string, playerId: string, optionIndex: number)
   if (code !== s.code || s.phase !== 'guessing' || !s.slide || !isQuiz(s.slide)) return false
   if (!s.players.has(playerId) || s.guesses.has(playerId)) return false
   if (optionIndex < 0 || optionIndex >= slotCount(s.slide)) return false
-  // Just record; scoring happens at reveal (see reveal()).
-  s.guesses.set(playerId, optionIndex)
+  // Record the answer and how long it took; scoring happens at reveal.
+  s.guesses.set(playerId, { index: optionIndex, at: Date.now() - s.openedAt })
   broadcastState()
   return true
 }
@@ -243,10 +261,13 @@ export function recordReaction(code: string, playerId: string, emoji: string): b
   const s = ensureSession()
   if (code !== s.code) return false
   const now = Date.now()
-  const last = s.lastReactionAt.get(playerId) ?? 0
-  if (now - last < 250) return false
-  s.lastReactionAt.set(playerId, now)
+  const prev = s.lastReaction.get(playerId)
+  if (prev && now - prev.at < 250) return false // rate limit
+  // Same emoji again within the window keeps the streak going.
+  const streak =
+    prev && prev.emoji === emoji && now - prev.at < REACTION_SPAM_WINDOW_MS ? prev.streak + 1 : 1
+  s.lastReaction.set(playerId, { emoji, at: now, streak })
   const slot = [...s.players.keys()].indexOf(playerId)
-  broadcast({ type: 'reaction', emoji, slot })
+  broadcast({ type: 'reaction', emoji, slot, streak })
   return true
 }

@@ -64,4 +64,4 @@ export type Snapshot = {
 
 export type ServerEvent =
   | { type: 'state'; state: Snapshot }
-  | { type: 'reaction'; emoji: string; slot: number }
+  | { type: 'reaction'; emoji: string; slot: number; streak: number }

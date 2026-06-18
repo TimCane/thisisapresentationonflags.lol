@@ -226,8 +226,6 @@ import { REACTIONS } from '@/lib/constants'
     let joinedCode = localStorage.getItem('code') ?? ''
     let nickname = localStorage.getItem('nick') ?? ''
     let myGuess: { index: number; choice: number } | null = null
-    let score = 0
-    let lastScored = -1
     // Hold the winner back until the display roulette would have landed.
     let prizeKey = -1
     let prizeRevealed = false
@@ -308,7 +306,8 @@ import { REACTIONS } from '@/lib/constants'
         prizeTimer = null
       }
       $('roomCode').textContent = snap.code
-      $('me').textContent = `${nickname} - ${score} pts`
+      const meRow = snap.roster.find((r) => r.nickname === nickname)
+      $('me').textContent = `${nickname} - ${meRow ? meRow.score : 0} pts`
       const stage = $('stage')
       const result = $('result')
       stage.innerHTML = ''
@@ -386,12 +385,7 @@ import { REACTIONS } from '@/lib/constants'
 
       if (revealed) {
         const right = answered && myGuess!.choice === correctIndex
-        if (answered && right && lastScored !== snap.index) {
-          score += 1
-          lastScored = snap.index
-          $('me').textContent = `${nickname} - ${score} pts`
-        }
-        result.textContent = !answered ? '' : right ? 'Correct! +1' : 'Not quite.'
+        result.textContent = !answered ? '' : right ? 'Correct!' : 'Not quite.'
       } else {
         result.textContent = answered ? 'Locked in. Hold tight...' : ''
       }
@@ -401,8 +395,6 @@ import { REACTIONS } from '@/lib/constants'
       if (joinedCode && s.code !== joinedCode && !$('game').hidden) {
         joinedCode = ''
         myGuess = null
-        score = 0
-        lastScored = -1
         $('game').hidden = true
         $('gate').hidden = false
         $('gateError').textContent = 'New session started - enter the new code.'

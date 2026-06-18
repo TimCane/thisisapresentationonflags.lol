@@ -32,13 +32,13 @@ export function flagUrl(code: string): string {
 
 export function connect(
   onState: (state: Snapshot) => void,
-  onReaction?: (emoji: string, slot: number) => void,
+  onReaction?: (emoji: string, slot: number, streak: number) => void,
 ): EventSource {
   const es = new EventSource('/api/events')
   es.onmessage = (e) => {
     const ev = JSON.parse(e.data)
     if (ev.type === 'state') onState(ev.state)
-    else if (ev.type === 'reaction') onReaction?.(ev.emoji, ev.slot)
+    else if (ev.type === 'reaction') onReaction?.(ev.emoji, ev.slot, ev.streak)
   }
   return es
 }
