@@ -1,0 +1,276 @@
+---
+import Base from '@/layouts/Base.astro'
+import { ensureSession, snapshot } from '@/lib/session'
+
+export const prerender = false
+
+// Loading the projector view mints the session so its code is on screen before
+// anyone connects.
+ensureSession()
+const initial = snapshot()
+---
+
+<Base title="Flags - Display">
+  <main id="screen" data-initial={JSON.stringify(initial)}>
+    <header class="top">
+      <div class="join">
+        Join at <b id="host"></b> &middot; code <b id="code" class="code">{initial.code}</b>
+      </div>
+      <div class="meta">
+        <span id="players">0</span> playing &middot; <span id="answered">0</span> answered
+      </div>
+    </header>
+
+    <section id="stage">
+      <div id="lobby">
+        <h1>thisisapresentationonflags<span class="dim">.lol</span></h1>
+        <p class="big">Code <b class="code">{initial.code}</b></p>
+        <p class="dim">Grab your phone and join.</p>
+      </div>
+
+      <div id="round" hidden>
+        <img id="flag" alt="current flag" />
+        <ul id="options"></ul>
+      </div>
+
+      <div id="finale" hidden>
+        <h1>Final scores</h1>
+        <ol id="finalBoard" class="board"></ol>
+      </div>
+    </section>
+
+    <aside id="leaderboard" hidden>
+      <h2>Leaders</h2>
+      <ol id="board" class="board"></ol>
+    </aside>
+
+    <div id="reactions" aria-hidden="true"></div>
+  </main>
+
+  <style>
+    #screen {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: 2vmin 3vmin;
+      position: relative;
+      overflow: hidden;
+    }
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 2.2vmin;
+      color: var(--muted);
+    }
+    .code {
+      color: var(--accent);
+      letter-spacing: 0.15em;
+    }
+    #stage {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #lobby {
+      text-align: center;
+    }
+    #lobby h1 {
+      font-size: 6vmin;
+      margin: 0 0 2vmin;
+    }
+    .dim {
+      color: var(--muted);
+    }
+    .big {
+      font-size: 5vmin;
+      margin: 0;
+    }
+    #round {
+      display: flex;
+      gap: 4vmin;
+      align-items: center;
+      width: 100%;
+      justify-content: center;
+    }
+    #flag {
+      width: 46vw;
+      max-height: 62vh;
+      border-radius: 1.5vmin;
+      border: 1px solid var(--line);
+      background: #fff;
+      box-shadow: 0 1vmin 4vmin rgba(0, 0, 0, 0.4);
+    }
+    #options {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 1.6vmin;
+      width: 38vw;
+    }
+    .opt {
+      position: relative;
+      padding: 2.4vmin 2.4vmin;
+      border-radius: 1.2vmin;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      font-size: 3vmin;
+      overflow: hidden;
+    }
+    .opt .fill {
+      position: absolute;
+      inset: 0;
+      background: rgba(79, 124, 255, 0.25);
+      width: 0;
+      transition: width 0.4s ease;
+    }
+    .opt .label,
+    .opt .count {
+      position: relative;
+    }
+    .opt .count {
+      float: right;
+      color: var(--muted);
+    }
+    .opt.correct {
+      border-color: var(--good);
+    }
+    .opt.correct .fill {
+      background: rgba(46, 204, 113, 0.35);
+    }
+    .opt.correct .count {
+      color: var(--good);
+    }
+    #leaderboard {
+      position: absolute;
+      right: 3vmin;
+      bottom: 3vmin;
+      width: 28vw;
+      background: rgba(10, 14, 30, 0.9);
+      border: 1px solid var(--line);
+      border-radius: 1.5vmin;
+      padding: 2vmin;
+    }
+    #leaderboard h2 {
+      margin: 0 0 1vmin;
+      font-size: 2.6vmin;
+    }
+    .board {
+      margin: 0;
+      padding-left: 4vmin;
+      font-size: 2.6vmin;
+    }
+    .board li {
+      margin: 0.6vmin 0;
+    }
+    .board .pts {
+      float: right;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    #finale h1 {
+      font-size: 5vmin;
+      text-align: center;
+    }
+    #reactions {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .floater {
+      position: absolute;
+      bottom: -6vmin;
+      font-size: 5vmin;
+      animation: rise 2.6s ease-out forwards;
+    }
+    @keyframes rise {
+      0% {
+        transform: translateY(0) scale(0.6);
+        opacity: 0;
+      }
+      15% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(-78vh) scale(1.2);
+        opacity: 0;
+      }
+    }
+  </style>
+
+  <script>
+    import { connect } from '@/lib/client'
+    import { flagUrl } from '@/lib/client'
+    import type { Snapshot } from '@/lib/types'
+
+    const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
+    $('host').textContent = location.host
+
+    function board(el: HTMLElement, rows: Snapshot['leaderboard']) {
+      el.innerHTML = ''
+      for (const r of rows) {
+        const li = document.createElement('li')
+        li.innerHTML = `<span class="pts">${r.score}</span>${escapeHtml(r.nickname)}`
+        el.appendChild(li)
+      }
+    }
+
+    function escapeHtml(s: string): string {
+      return s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c,
+      )
+    }
+
+    function render(s: Snapshot) {
+      $('code').textContent = s.code
+      $('players').textContent = String(s.players)
+      const q = s.question
+      $('answered').textContent = String(q?.answered ?? 0)
+
+      const inRound = (s.phase === 'guessing' || s.phase === 'revealed') && !!q
+      $('lobby').hidden = inRound || s.phase === 'ended'
+      $('round').hidden = !inRound
+      $('finale').hidden = s.phase !== 'ended'
+
+      if (inRound && q) {
+        ;($('flag') as HTMLImageElement).src = flagUrl(q.flagCode)
+        const total = q.tally.reduce((a, b) => a + b, 0)
+        const correctIndex = q.options.findIndex((o) => o.code === q.flagCode)
+        const ul = $('options')
+        ul.innerHTML = ''
+        q.options.forEach((o, i) => {
+          const pct = total ? Math.round((q.tally[i] / total) * 100) : 0
+          const li = document.createElement('li')
+          li.className = 'opt' + (s.phase === 'revealed' && i === correctIndex ? ' correct' : '')
+          li.innerHTML =
+            `<span class="fill" style="width:${pct}%"></span>` +
+            `<span class="count">${q.tally[i]}</span>` +
+            `<span class="label">${escapeHtml(o.name)}</span>`
+          ul.appendChild(li)
+        })
+      }
+
+      const showBoard = (s.phase === 'revealed' || s.phase === 'ended') && s.leaderboard.length > 0
+      $('leaderboard').hidden = !showBoard || s.phase === 'ended'
+      if (showBoard) board($('board'), s.leaderboard)
+      if (s.phase === 'ended') board($('finalBoard'), s.leaderboard)
+    }
+
+    function floatReaction(emoji: string) {
+      const span = document.createElement('span')
+      span.className = 'floater'
+      span.textContent = emoji
+      span.style.left = 10 + Math.random() * 80 + 'vw'
+      $('reactions').appendChild(span)
+      setTimeout(() => span.remove(), 2700)
+    }
+
+    const initial = JSON.parse($('screen').dataset.initial!) as Snapshot
+    render(initial)
+    connect(render, floatReaction)
+  </script>
+</Base>

@@ -1,0 +1,75 @@
+---
+import { DECK } from '@/lib/deck'
+
+interface Props {
+  title: string
+}
+const { title } = Astro.props
+
+// Build code -> svg url for the deck flags; the only flags ever shown are the
+// current question's, always a deck flag. Embedded as JSON for the client.
+const svgs = import.meta.glob('/src/content/flags/*/flag.svg', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+const flagUrls: Record<string, string> = {}
+for (const code of DECK) flagUrls[code] = svgs[`/src/content/flags/${code}/flag.svg`]
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <script id="config" is:inline type="application/json" set:html={JSON.stringify({ flagUrls })} />
+    <slot />
+    <style is:global>
+      :root {
+        --bg: #0b1020;
+        --panel: #151b30;
+        --line: #273052;
+        --fg: #eef1ff;
+        --muted: #8a93b2;
+        --accent: #4f7cff;
+        --good: #2ecc71;
+        --bad: #e74c3c;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: 10px;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+    </style>
+  </body>
+</html>

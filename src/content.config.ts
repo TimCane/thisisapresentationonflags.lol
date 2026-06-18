@@ -36,6 +36,8 @@ const flags = defineCollection({
       flag: image(),
       colours: z.array(z.enum(COLOURS)).min(1),
       features: z.array(z.string()).min(1),
+      // Presenter talking points; only carried by curated deck flags.
+      notes: z.string().optional(),
     }),
 })
 

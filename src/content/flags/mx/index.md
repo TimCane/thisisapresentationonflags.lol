@@ -13,4 +13,6 @@ features:
   - bird
   - animal
   - plant
+notes: >-
+  An eagle on a cactus devouring a snake, the Aztec founding legend of Tenochtitlan. The green-white-red echoes the Italian tricolour but is darker.
 ---

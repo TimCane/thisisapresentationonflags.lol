@@ -9,4 +9,6 @@ colours:
   - yellow
 features:
   - horizontal-stripes
+notes: >-
+  Black-red-gold, traced to the 1848 revolutions and the Weimar Republic. Horizontal bands, unlike Belgium's vertical black-yellow-red.
 ---
