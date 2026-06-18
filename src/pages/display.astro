@@ -20,6 +20,7 @@ const initial = snapshot()
     <section id="stage"></section>
 
     <footer id="scoreboard"></footer>
+    <div id="crown" hidden><span>&#128081;</span></div>
 
     <div id="reactions" aria-hidden="true"></div>
   </main>
@@ -224,10 +225,51 @@ const initial = snapshot()
     .pcol:last-child {
       border-right: none;
     }
-    .crown {
-      height: 2.4vh;
-      font-size: 2.2vh;
-      line-height: 1;
+    #crown {
+      position: fixed;
+      bottom: 9vh;
+      transform: translateX(-50%);
+      pointer-events: none;
+      z-index: 5;
+    }
+    #crown span {
+      display: block;
+      font-size: 4vh;
+      filter: drop-shadow(0 0.4vh 0.5vh rgba(0, 0, 0, 0.5));
+      animation: bob 1.7s ease-in-out infinite;
+    }
+    @keyframes bob {
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-1.1vh);
+      }
+    }
+    .prize h1 {
+      font-size: 9vmin;
+      margin: 1vmin 0;
+    }
+    .rouletteName {
+      font-size: 8vmin;
+      font-weight: 800;
+      min-height: 1.2em;
+    }
+    .rouletteName.landed {
+      color: var(--good);
+      animation: pop 0.45s ease;
+    }
+    @keyframes pop {
+      0% {
+        transform: scale(0.6);
+      }
+      60% {
+        transform: scale(1.25);
+      }
+      100% {
+        transform: scale(1);
+      }
     }
     .pscore {
       font-size: 3.2vh;
@@ -352,18 +394,29 @@ const initial = snapshot()
     }
 
     let roster: Snapshot['roster'] = []
+    let prizePlaying = false
 
     function renderScoreboard(rows: Snapshot['roster']) {
       const board = $('scoreboard')
       board.hidden = rows.length === 0
-      const top = rows.reduce((m, r) => Math.max(m, r.score), 0)
-      const soleLeader = top > 0 && rows.filter((r) => r.score === top).length === 1
       board.innerHTML = rows
-        .map((r) => {
-          const crown = soleLeader && r.score === top ? '\u{1F451}' : ''
-          return `<div class="pcol"><span class="crown">${crown}</span><span class="pscore">${r.score}</span><span class="pname">${escapeHtml(r.nickname)}</span></div>`
-        })
+        .map(
+          (r) =>
+            `<div class="pcol"><span class="pscore">${r.score}</span><span class="pname">${escapeHtml(r.nickname)}</span></div>`,
+        )
         .join('')
+
+      // Float the crown above the sole leader's column; hidden on a tie or 0-0.
+      const top = rows.reduce((m, r) => Math.max(m, r.score), 0)
+      const leaders = rows.filter((r) => r.score === top)
+      const crown = $('crown')
+      if (top > 0 && leaders.length === 1 && rows.length > 0) {
+        const idx = rows.findIndex((r) => r.score === top)
+        crown.style.left = (idx + 0.5) * (100 / rows.length) + 'vw'
+        crown.hidden = false
+      } else {
+        crown.hidden = true
+      }
     }
 
     function render(s: Snapshot) {
@@ -377,6 +430,17 @@ const initial = snapshot()
         : `${s.players} playing`
 
       const stage = $('stage')
+      if (s.phase === 'prize' && s.prize) {
+        $('meta').textContent = ''
+        if (!prizePlaying) {
+          prizePlaying = true
+          stage.innerHTML = `<div class="bigcard prize"><p class="kicker">Prize #${s.prize.count}</p><h1>PRIZE TIME</h1><div id="rouletteName" class="rouletteName">&nbsp;</div></div>`
+          startRoulette(s.prize.winner)
+        }
+        return
+      }
+      prizePlaying = false
+
       if (!slide || s.phase === 'lobby') {
         stage.innerHTML =
           s.phase === 'ended'
@@ -398,18 +462,59 @@ const initial = snapshot()
       }
     }
 
+    function spawnFloater(emoji: string, leftVw: number) {
+      const span = document.createElement('span')
+      span.className = 'floater'
+      span.textContent = emoji
+      span.style.left = leftVw + 'vw'
+      $('reactions').appendChild(span)
+      setTimeout(() => span.remove(), 2700)
+    }
+
     // Spawn the emoji within the sending player's scoreboard column so it rises
     // out of their 1/N band.
     function floatReaction(emoji: string, slot: number) {
       const n = Math.max(roster.length, 1)
       const colW = 100 / n
       const base = slot >= 0 && slot < n ? slot * colW : Math.random() * 100
-      const span = document.createElement('span')
-      span.className = 'floater'
-      span.textContent = emoji
-      span.style.left = base + Math.random() * colW + 'vw'
-      $('reactions').appendChild(span)
-      setTimeout(() => span.remove(), 2700)
+      spawnFloater(emoji, base + Math.random() * colW)
+    }
+
+    function celebrate() {
+      for (let i = 0; i < 16; i++) {
+        setTimeout(() => spawnFloater('\u{1F389}', 4 + Math.random() * 92), i * 80)
+      }
+    }
+
+    // Flash through the roster, decelerate, and land on the server-chosen winner.
+    function startRoulette(winner: string) {
+      const names = roster.map((r) => r.nickname)
+      const cell = () => document.getElementById('rouletteName')
+      if (!cell()) return
+      if (names.length <= 1) {
+        const e = cell()!
+        e.textContent = winner
+        e.classList.add('landed')
+        celebrate()
+        return
+      }
+      let elapsed = 0
+      const duration = 2400
+      const step = () => {
+        const e = cell()
+        if (!e) return
+        const delay = 60 + (elapsed / duration) * 260
+        elapsed += delay
+        if (elapsed < duration) {
+          e.textContent = names[Math.floor(Math.random() * names.length)]
+          setTimeout(step, delay)
+        } else {
+          e.textContent = winner
+          e.classList.add('landed')
+          celebrate()
+        }
+      }
+      step()
     }
 
     const initial = JSON.parse($('screen').dataset.initial!) as Snapshot
