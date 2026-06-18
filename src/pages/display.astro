@@ -499,11 +499,13 @@ const initial = snapshot()
         return
       }
       let elapsed = 0
-      const duration = 2400
+      const duration = 5200
       const step = () => {
         const e = cell()
         if (!e) return
-        const delay = 60 + (elapsed / duration) * 260
+        // Quadratic ramp: snappy at the start, dragging out near the end.
+        const t = elapsed / duration
+        const delay = 90 + t * t * 620
         elapsed += delay
         if (elapsed < duration) {
           e.textContent = names[Math.floor(Math.random() * names.length)]
