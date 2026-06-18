@@ -33,7 +33,9 @@ import { REACTIONS } from '@/lib/constants'
     </section>
   </main>
 
-  <style>
+  <!-- global: stage content is injected by client JS without Astro's scope
+       attribute, so scoped styles would not match it. -->
+  <style is:global>
     #app {
       max-width: 480px;
       margin: 0 auto;

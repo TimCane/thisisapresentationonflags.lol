@@ -27,7 +27,9 @@ const initial = snapshot()
     <div id="reactions" aria-hidden="true"></div>
   </main>
 
-  <style>
+  <!-- global: most of this page's content is injected by client JS, which does
+       not carry Astro's scope attribute, so scoped styles would not match it. -->
+  <style is:global>
     #screen {
       height: 100%;
       display: flex;
