@@ -3,6 +3,12 @@
 export const OPTION_COUNT = 4
 export const LEADERBOARD_SIZE = 8
 
+// Auto prizes: each presenter advance (at a clean slide boundary) has this
+// chance to pop a PRIZE TIME instead, but never within PRIZE_MIN_GAP slides of
+// the last one.
+export const PRIZE_CHANCE = 0.22
+export const PRIZE_MIN_GAP = 2
+
 // Fixed ambient reaction palette. `key` is the wire value; `emoji` is rendered.
 export const REACTIONS = [
   { key: 'clap', emoji: '\u{1F44F}' },

@@ -180,6 +180,12 @@ import { REACTIONS } from '@/lib/constants'
       font-size: 1.6rem;
       margin: 0 0 6px;
     }
+    .prizewin {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--accent);
+      margin: 4px 0;
+    }
     #result {
       min-height: 1.4em;
       font-weight: 700;
@@ -209,6 +215,11 @@ import { REACTIONS } from '@/lib/constants'
     import type { Snapshot } from '@/lib/types'
 
     const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
+    const esc = (s: string) =>
+      s.replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c,
+      )
 
     const pid = playerId()
     let snap: Snapshot | null = null
@@ -292,6 +303,12 @@ import { REACTIONS } from '@/lib/constants'
       const result = $('result')
       stage.innerHTML = ''
       result.textContent = ''
+
+      if (snap.phase === 'prize' && snap.prize) {
+        const mine = snap.prize.winner === nickname
+        stage.innerHTML = `<div class="info"><h2>PRIZE TIME</h2><p class="prizewin">${esc(snap.prize.winner)}</p><p class="muted">${mine ? 'You won a prize! \u{1F389}' : 'wins a prize'}</p></div>`
+        return
+      }
 
       const slide = snap.slide
       if (snap.phase === 'lobby' || !slide) {

@@ -56,6 +56,7 @@ const slidesMeta = slides.map((e) => {
       <div id="controls">
         <button id="reveal" class="primary" hidden>Reveal answer</button>
         <button id="next" class="primary" hidden>Next</button>
+        <button id="prizes" class="ghost">Prizes: on</button>
         <button id="reset" class="ghost">New session</button>
       </div>
     </section>
@@ -222,6 +223,9 @@ const slidesMeta = slides.map((e) => {
     const control = (action: string) => post('/api/control', { code, action })
     $('next').addEventListener('click', () => control('advance'))
     $('reveal').addEventListener('click', () => control('reveal'))
+    $('prizes').addEventListener('click', () =>
+      control(snap?.prizesEnabled ? 'prizes-off' : 'prizes-on'),
+    )
     $('reset').addEventListener('click', () => {
       if (confirm('Start a new session? Scores reset and the code changes.')) control('reset')
     })
@@ -230,21 +234,31 @@ const slidesMeta = slides.map((e) => {
       if (!snap || !unlocked) return
       $('roomCode').textContent = snap.code
       $('progress').textContent =
-        snap.phase === 'lobby'
-          ? 'Not started'
-          : snap.phase === 'ended'
-            ? 'Finished'
-            : `Slide ${snap.index + 1} of ${snap.total}`
+        snap.phase === 'prize'
+          ? 'Prize time'
+          : snap.phase === 'lobby'
+            ? 'Not started'
+            : snap.phase === 'ended'
+              ? 'Finished'
+              : `Slide ${snap.index + 1} of ${snap.total}`
 
       const slide = snap.slide
-      const answered = slide && (slide.kind === 'guess-flag' || slide.kind === 'which-flag')
+      const answered =
+        snap.phase !== 'prize' &&
+        slide &&
+        (slide.kind === 'guess-flag' || slide.kind === 'which-flag')
       $('answered').textContent = String(answered ? slide.answered : 0)
       $('players').textContent = String(snap.players)
+      $('prizes').textContent = `Prizes: ${snap.prizesEnabled ? 'on' : 'off'}`
 
       const m: Meta | undefined = snap.index >= 0 ? meta[snap.index] : undefined
       const thumbs = $('thumbs')
       thumbs.innerHTML = ''
-      if (!slide || !m) {
+      if (snap.phase === 'prize' && snap.prize) {
+        $('kind').textContent = `Prize #${snap.prize.count}`
+        $('headline').textContent = `Winner: ${snap.prize.winner}`
+        $('notes').textContent = 'Hand over a booster pack, then tap Continue.'
+      } else if (!slide || !m) {
         $('kind').textContent = snap.phase === 'ended' ? 'Finished' : 'Lobby'
         $('headline').textContent =
           snap.phase === 'ended' ? 'Final scores are up' : 'Waiting to start'
@@ -272,7 +286,8 @@ const slidesMeta = slides.map((e) => {
 
       $('reveal').hidden = snap.phase !== 'guessing'
       $('next').hidden = snap.phase === 'guessing'
-      $('next').textContent = snap.phase === 'lobby' ? 'Start' : 'Next'
+      $('next').textContent =
+        snap.phase === 'lobby' ? 'Start' : snap.phase === 'prize' ? 'Continue' : 'Next'
       ;($('next') as HTMLButtonElement).disabled = snap.phase === 'ended'
     }
 

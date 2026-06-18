@@ -1,4 +1,5 @@
 import { isQuiz } from './types'
+import { PRIZE_CHANCE, PRIZE_MIN_GAP } from './constants'
 import type { BuiltSlide, DisplaySlide, Snapshot, ServerEvent, Phase } from './types'
 
 export type { BuiltSlide, DisplaySlide, Snapshot, ServerEvent, Phase }
@@ -14,6 +15,10 @@ type Session = {
   guesses: Map<string, number>
   players: Map<string, Player>
   lastReactionAt: Map<string, number>
+  prizesEnabled: boolean
+  prizeWinner: { nickname: string } | null
+  prizeCount: number
+  slidesSincePrize: number
 }
 
 type Store = {
@@ -45,6 +50,10 @@ function freshSession(): Session {
     guesses: new Map(),
     players: new Map(),
     lastReactionAt: new Map(),
+    prizesEnabled: true,
+    prizeWinner: null,
+    prizeCount: 0,
+    slidesSincePrize: 0,
   }
 }
 
@@ -103,6 +112,11 @@ export function snapshot(): Snapshot {
     players: s.players.size,
     slide: toDisplay(s),
     roster,
+    prizesEnabled: s.prizesEnabled,
+    prize:
+      s.phase === 'prize' && s.prizeWinner
+        ? { winner: s.prizeWinner.nickname, count: s.prizeCount }
+        : null,
   }
 }
 
@@ -143,8 +157,38 @@ export function openSlide(index: number, total: number, slide: BuiltSlide): void
   s.total = total
   s.slide = slide
   s.guesses = new Map()
+  s.prizeWinner = null
+  s.slidesSincePrize += 1
   s.phase = isQuiz(slide) ? 'guessing' : 'info'
   broadcastState()
+}
+
+export function setPrizesEnabled(enabled: boolean): void {
+  ensureSession().prizesEnabled = enabled
+  broadcastState()
+}
+
+// True when an advance should pop a prize instead of moving on. Only at clean
+// boundaries (after info/reveal), never mid-question, and rate-limited.
+export function shouldFirePrize(): boolean {
+  const s = ensureSession()
+  if (!s.prizesEnabled || s.players.size === 0) return false
+  if (s.phase !== 'info' && s.phase !== 'revealed') return false
+  if (s.slidesSincePrize < PRIZE_MIN_GAP) return false
+  return Math.random() < PRIZE_CHANCE
+}
+
+export function firePrize(): boolean {
+  const s = ensureSession()
+  const ids = [...s.players.keys()]
+  if (!ids.length) return false
+  const winner = s.players.get(ids[Math.floor(Math.random() * ids.length)])!
+  s.prizeWinner = { nickname: winner.nickname }
+  s.prizeCount += 1
+  s.slidesSincePrize = 0
+  s.phase = 'prize'
+  broadcastState()
+  return true
 }
 
 export function reveal(): void {
@@ -168,6 +212,7 @@ export function end(total: number): void {
   const s = ensureSession()
   s.phase = 'ended'
   s.slide = null
+  s.prizeWinner = null
   s.index = total
   s.total = total
   broadcastState()

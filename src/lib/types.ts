@@ -1,4 +1,4 @@
-export type Phase = 'lobby' | 'info' | 'guessing' | 'revealed' | 'ended'
+export type Phase = 'lobby' | 'info' | 'guessing' | 'revealed' | 'ended' | 'prize'
 
 export type Option = { code: string; name: string }
 
@@ -56,6 +56,9 @@ export type Snapshot = {
   // All players in stable join order; column index drives the scoreboard and
   // the origin of each player's floating reactions.
   roster: { nickname: string; score: number }[]
+  prizesEnabled: boolean
+  // Set only during the 'prize' phase; the chosen winner + which prize this is.
+  prize: { winner: string; count: number } | null
 }
 
 export type ServerEvent =
