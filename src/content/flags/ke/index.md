@@ -11,4 +11,6 @@ colours:
 features:
   - horizontal-stripes
   - emblem
+notes: >-
+  A Maasai shield and crossed spears over black, red and green: the people, the blood shed for freedom, and the land, with white for peace.
 ---
