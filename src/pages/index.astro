@@ -1,17 +1,293 @@
 ---
-
+import Base from '@/layouts/Base.astro'
+import { REACTIONS } from '@/lib/constants'
 ---
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>thisisapresentationonflags.lol</title>
-  </head>
-  <body>
-    <main>
-      <h1>thisisapresentationonflags.lol</h1>
-    </main>
-  </body>
-</html>
+<Base title="Guess the flag">
+  <main id="app">
+    <section id="gate" class="card">
+      <h1>Guess the flag</h1>
+      <p class="muted">Enter the code on the big screen to join.</p>
+      <input id="code" class="field" placeholder="CODE" maxlength="3" autocapitalize="characters" />
+      <input id="nick" class="field" placeholder="Your name" maxlength="24" />
+      <button id="join" class="primary">Join</button>
+      <p id="gateError" class="error"></p>
+    </section>
+
+    <section id="game" hidden>
+      <header class="bar">
+        <span>Room <b id="roomCode"></b></span>
+        <span id="me"></span>
+      </header>
+      <p id="status" class="muted"></p>
+      <div id="flagWrap" hidden><img id="flag" alt="flag" /></div>
+      <div id="options"></div>
+      <p id="result"></p>
+      <div id="reactions">
+        {
+          REACTIONS.map((r) => (
+            <button class="react" data-key={r.key} aria-label={r.key}>
+              {r.emoji}
+            </button>
+          ))
+        }
+      </div>
+    </section>
+  </main>
+
+  <style>
+    #app {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 20px;
+      min-height: 100%;
+    }
+    .card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 24px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      margin-top: 12vh;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.6rem;
+    }
+    .muted {
+      color: var(--muted);
+      margin: 0;
+    }
+    .field {
+      padding: 14px;
+      font-size: 1.1rem;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #0e1428;
+      color: var(--fg);
+    }
+    #code {
+      text-transform: uppercase;
+      letter-spacing: 0.4em;
+      text-align: center;
+      font-weight: 700;
+    }
+    .primary,
+    .react {
+      padding: 14px;
+      font-size: 1.1rem;
+    }
+    .primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      font-weight: 700;
+    }
+    .error {
+      color: var(--bad);
+      min-height: 1.2em;
+      margin: 0;
+    }
+    .bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 4px;
+      color: var(--muted);
+    }
+    #flagWrap {
+      margin: 8px 0 16px;
+    }
+    #flag {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+    #options {
+      display: grid;
+      gap: 10px;
+    }
+    .opt {
+      padding: 16px;
+      font-size: 1.1rem;
+      text-align: left;
+    }
+    .opt.correct {
+      background: var(--good);
+      border-color: var(--good);
+      color: #06210f;
+      font-weight: 700;
+    }
+    .opt.wrong {
+      background: var(--bad);
+      border-color: var(--bad);
+    }
+    .opt.mine {
+      outline: 2px solid var(--accent);
+    }
+    #result {
+      min-height: 1.4em;
+      font-weight: 700;
+      text-align: center;
+    }
+    #reactions {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px;
+      background: linear-gradient(transparent, var(--bg) 40%);
+    }
+    .react {
+      width: 52px;
+      font-size: 1.5rem;
+      line-height: 1;
+    }
+  </style>
+
+  <script>
+    import { playerId, post, flagUrl, connect } from '@/lib/client'
+    import type { Snapshot } from '@/lib/types'
+
+    const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
+
+    const pid = playerId()
+    let snap: Snapshot | null = null
+    let joinedCode = localStorage.getItem('code') ?? ''
+    let nickname = localStorage.getItem('nick') ?? ''
+    let myGuess: { flagCode: string; index: number } | null = null
+    let score = 0
+    let lastScored = ''
+
+    ;($('code') as HTMLInputElement).value = joinedCode
+    ;($('nick') as HTMLInputElement).value = nickname
+
+    async function doJoin(code: string, nick: string, silent: boolean) {
+      const res = await post('/api/join', { code, playerId: pid, nickname: nick })
+      if (res.ok) {
+        joinedCode = code
+        nickname = nick
+        localStorage.setItem('code', code)
+        localStorage.setItem('nick', nick)
+        $('gate').hidden = true
+        $('game').hidden = false
+        render()
+      } else if (!silent) {
+        $('gateError').textContent = (res.error as string) ?? 'Could not join'
+      }
+    }
+
+    $('join').addEventListener('click', () => {
+      const code = ($('code') as HTMLInputElement).value.trim().toUpperCase()
+      const nick = ($('nick') as HTMLInputElement).value.trim()
+      if (code.length !== 3 || !nick) {
+        $('gateError').textContent = 'Enter the 3-letter code and a name.'
+        return
+      }
+      doJoin(code, nick, false)
+    })
+
+    for (const btn of document.querySelectorAll<HTMLButtonElement>('.react')) {
+      btn.addEventListener('click', () => {
+        if (!joinedCode) return
+        post('/api/react', { code: joinedCode, playerId: pid, reaction: btn.dataset.key })
+      })
+    }
+
+    function guess(index: number) {
+      const q = snap?.question
+      if (!snap || snap.phase !== 'guessing' || !q) return
+      if (myGuess && myGuess.flagCode === q.flagCode) return
+      myGuess = { flagCode: q.flagCode, index }
+      post('/api/guess', { code: joinedCode, playerId: pid, optionIndex: index })
+      render()
+    }
+
+    function render() {
+      if (!snap) return
+      $('roomCode').textContent = snap.code
+      $('me').textContent = `${nickname} - ${score} pts`
+      const q = snap.question
+      const flagWrap = $('flagWrap')
+      const opts = $('options')
+      const status = $('status')
+      const result = $('result')
+
+      if (snap.phase === 'lobby' || !q) {
+        status.textContent =
+          snap.phase === 'ended'
+            ? "That's a wrap - thanks for playing!"
+            : 'Waiting for the next flag...'
+        flagWrap.hidden = true
+        opts.innerHTML = ''
+        result.textContent = ''
+        return
+      }
+
+      status.textContent = ''
+      flagWrap.hidden = false
+      ;($('flag') as HTMLImageElement).src = flagUrl(q.flagCode)
+      const answered = !!myGuess && myGuess.flagCode === q.flagCode
+      const correctIndex = q.options.findIndex((o) => o.code === q.flagCode)
+
+      opts.innerHTML = ''
+      q.options.forEach((o, i) => {
+        const b = document.createElement('button')
+        b.className = 'opt'
+        b.textContent = o.name
+        if (answered && myGuess!.index === i) b.classList.add('mine')
+        if (snap!.phase === 'revealed') {
+          if (i === correctIndex) b.classList.add('correct')
+          else if (answered && myGuess!.index === i) b.classList.add('wrong')
+          b.disabled = true
+        } else if (answered) {
+          b.disabled = true
+        } else {
+          b.addEventListener('click', () => guess(i))
+        }
+        opts.appendChild(b)
+      })
+
+      if (snap.phase === 'revealed') {
+        const right = answered && myGuess!.index === correctIndex
+        if (answered && right && lastScored !== q.flagCode) {
+          score += 1
+          lastScored = q.flagCode
+        }
+        const answer = q.options[correctIndex]?.name ?? ''
+        result.textContent = !answered
+          ? `It was ${answer}.`
+          : right
+            ? 'Correct! +1'
+            : `Not quite - it was ${answer}.`
+      } else {
+        result.textContent = answered ? 'Locked in. Hold tight...' : ''
+      }
+    }
+
+    connect((s) => {
+      // A new session (fresh code) means we were dropped - re-gate.
+      if (joinedCode && s.code !== joinedCode && !$('game').hidden) {
+        joinedCode = ''
+        myGuess = null
+        score = 0
+        lastScored = ''
+        $('game').hidden = true
+        $('gate').hidden = false
+        $('gateError').textContent = 'New session started - enter the new code.'
+      }
+      snap = s
+      if (myGuess && s.question && myGuess.flagCode !== s.question.flagCode) myGuess = null
+      // Auto-rejoin on reload if the stored code matches the live session.
+      if ($('game').hidden && joinedCode && nickname && s.code === joinedCode) {
+        doJoin(joinedCode, nickname, true)
+      }
+      if (!$('game').hidden) render()
+    })
+  </script>
+</Base>
