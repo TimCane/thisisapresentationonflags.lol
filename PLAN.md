@@ -1,87 +1,100 @@
 # PLAN
 
 An interactive flag-guessing presentation built in Astro. The presenter drives a
-slideshow of national flags; the audience, on their own phones, guesses each flag
-and fires off reactions that surface live on the presenter's screen.
+deck of national flags from their phone; the room watches a projector; the
+audience guesses each flag and fires off emoji reactions on their own phones.
 
 ## Modes
 
-Two views over one shared, global session (one talk at a time).
+Three views over one shared, global session (one talk at a time).
 
-- **Audience** (`/`) - the default. Anyone visiting joins the current session,
-  sees the current flag, submits a multiple-choice guess, and sends reactions.
-- **Presenter** (`/present`) - an unguessable secret route. Source of truth for
-  the current slide; advances flags and watches guesses/reactions roll in.
+- **Audience** (`/`) - phones. Enter the room code + a nickname to join, then
+  guess the current flag and send reactions.
+- **Display** (`/display`) - the projector/TV. Mints and shows the 3-letter join
+  code, renders the current flag, live vote distribution, leaderboard, and
+  floating reactions.
+- **Presenter** (`/presenter`) - the presenter's phone. Enter the room code to
+  control the deck (reveal, next), see the answer, speaker notes, and the tally.
 
-No login. Control is gated only by knowing the `/present` path.
+### Joining (room code)
+
+Jackbox-style. `/display` mints a fresh 3-letter code when a session starts
+(resetting scores + deck position). Audience and presenter type that code to join
+the session. The code is visible to the whole room, so it is a join gate, not
+real auth - presenter control is available to anyone who enters the code. No
+passphrase, no login.
 
 ## Content
 
-Existing collection at `src/content/flags/<code>/`:
+Collection at `src/content/flags/<code>/`:
 
-- `index.md` frontmatter: `name`, `continent`, `code`, `flag` (relative svg).
+- `index.md` frontmatter: `name`, `continent`, `code`, `flag`, `colours` (enum),
+  `features` (tags), and now optional `notes` (presenter talking points).
 - `flag.svg` - the artwork.
-- ~197 countries already seeded.
+- 197 countries seeded; `colours`/`features` drive distractor selection.
 
-Multiple-choice options are generated from this set (correct answer + distractors,
-preferably same-continent for plausibility).
+The deck for the talk is a curated, ordered subset (`src/lib/deck.ts`, ~20
+varied flags). Only deck flags carry `notes`.
 
-## Realtime
+## Question lifecycle
 
-Astro SSR. Server holds session state in memory (ephemeral, gone on restart).
+Presenter-driven, two taps per flag:
 
-- **Down (server -> client):** Server-Sent Events. Clients subscribe to one SSE
-  endpoint and receive slide changes, reaction bursts, and live guess tallies.
-- **Up (client -> server):** plain `POST` API routes for guesses, reactions, and
-  presenter slide control.
+1. **Advance** - presenter taps next; server picks the next deck flag, builds 4
+   options (correct + 3 distractors), opens guessing immediately. Options appear
+   on audience phones.
+2. **Reveal** - presenter taps reveal; correct answer highlighted everywhere,
+   leaderboard updates.
 
-SSE fits because the data flow is overwhelmingly broadcast-down; the few
-client->server actions are fine as POSTs.
+Guesses lock on submit (first tap is final). Scoring is a flat 1 point per
+correct answer; the leaderboard ranks players by nickname.
 
-## Slide control
+## Multiple choice
 
-Presenter drives, audience follows. The presenter advances the flag; an SSE event
-pushes the new slide to every audience screen so they stay in sync.
-
-## Guessing
-
-Multiple choice. Each flag presents N options; audience taps one. Server scores
-exactly against the correct country and broadcasts an aggregate tally (and/or the
-reveal) back to all screens.
+"Which country is this flag?" - 4 options, one correct. Distractors are chosen
+server-side at advance time to be visually similar: rank other flags by shared
+`colours`/`features`, take the closest, top up by same continent then random so
+there are always 3. Options are shuffled. Everyone sees the same 4.
 
 ## Reactions
 
-Fixed emoji palette (e.g. clap, fire, laugh, heart). Audience taps an emoji; it
-animates/floats on the presenter screen.
+Ambient - available anytime, independent of the question phase. Fixed palette:
+clap, fire, laugh, heart, mind-blown, flag. Taps float/animate across `/display`.
+
+## Realtime
+
+Astro SSR (`@astrojs/node` standalone). One in-memory global session (ephemeral,
+gone on restart).
+
+- **Down:** one SSE stream (`/api/events`) broadcasts session state (code, phase,
+  current flag, options, live tally, leaderboard) plus transient reaction events.
+- **Up:** `POST` routes for join, guess, react, and presenter control.
+
+Player identity is a uuid minted in the browser (localStorage) alongside the
+nickname; sent with every action. Server routes are `prerender = false`.
 
 ## State model (in-memory)
 
-- Current slide index / flag code.
-- Per-flag guess tallies.
-- Reaction stream (recent, ephemeral).
-- Connected client count (optional, for presenter awareness).
+- `code`, `phase` (`lobby` | `guessing` | `revealed` | `ended`), `deckIndex`.
+- current flag `code`, the 4 option codes, the answer.
+- `guesses`: playerId -> optionIndex (current question, locked).
+- `players`: playerId -> { nickname, score }.
+- subscribers: the set of open SSE streams.
+- reactions are broadcast transiently, not stored.
 
-## Routes (sketch)
+## Routes
 
 - `GET /` - audience view.
-- `GET /present` - presenter view.
-- `GET /api/events` - SSE stream.
-- `POST /api/guess` - submit a guess.
-- `POST /api/react` - send a reaction.
-- `POST /api/slide` - presenter advances/sets the current flag.
-
-## Open questions
-
-- Reveal timing: does the presenter trigger the answer reveal, or auto-reveal
-  after a timer / once guesses settle?
-- Scoring: per-correct points only, or speed-weighted? Any leaderboard, given
-  state is ephemeral and anonymous?
-- Number of choices per question and distractor strategy.
-- How presenter actions are themselves authorized on the POST endpoints (the
-  secret route hides the UI, but the API is still open).
-- Astro SSR adapter + deploy target (devcontainer + Coolify per house defaults).
+- `GET /display` - projector view (creates the session if none, shows the code).
+- `GET /presenter` - control view.
+- `GET /api/events` - SSE stream of session state + reactions.
+- `POST /api/join` - register { code, playerId, nickname }.
+- `POST /api/guess` - submit { code, playerId, optionIndex }.
+- `POST /api/react` - send { code, playerId, emoji }.
+- `POST /api/control` - presenter { code, action } (advance | reveal | reset).
 
 ## Out of scope (for now)
 
 - Persistence across sessions, accounts, multiple concurrent rooms.
-- Committing `src/content/flags` (staged but intentionally not committed yet).
+- Real auth on presenter control (the room code is the only gate, by choice).
+- Deploy target tuning (devcontainer + Coolify per house defaults).
