@@ -19,10 +19,7 @@ const initial = snapshot()
 
     <section id="stage"></section>
 
-    <aside id="leaderboard" hidden>
-      <h2>Leaders</h2>
-      <ol id="board" class="board"></ol>
-    </aside>
+    <footer id="scoreboard"></footer>
 
     <div id="reactions" aria-hidden="true"></div>
   </main>
@@ -34,7 +31,7 @@ const initial = snapshot()
       height: 100%;
       display: flex;
       flex-direction: column;
-      padding: 2vmin 3vmin;
+      padding: 2vmin 3vmin 9vh;
       position: relative;
       overflow: hidden;
     }
@@ -92,6 +89,17 @@ const initial = snapshot()
       align-items: center;
       width: 100%;
       justify-content: center;
+    }
+    .flagcol {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2vmin;
+    }
+    .answername {
+      font-size: 4.5vmin;
+      font-weight: 700;
+      margin: 0;
     }
     .flag {
       width: 46vw;
@@ -166,6 +174,13 @@ const initial = snapshot()
       border-color: var(--good);
       box-shadow: 0 0 3vmin rgba(46, 204, 113, 0.6);
     }
+    .fcard.solo img {
+      width: 50vw;
+      max-height: 56vh;
+    }
+    .fcard figcaption {
+      margin-top: 1.5vmin;
+    }
     .numbadge {
       position: absolute;
       top: -2vmin;
@@ -185,19 +200,43 @@ const initial = snapshot()
       font-size: 2.6vmin;
       color: var(--muted);
     }
-    #leaderboard {
-      position: absolute;
-      right: 3vmin;
-      bottom: 3vmin;
-      width: 26vw;
-      background: rgba(10, 14, 30, 0.9);
-      border: 1px solid var(--line);
-      border-radius: 1.5vmin;
-      padding: 2vmin;
+    #scoreboard {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 9vh;
+      display: flex;
+      border-top: 1px solid var(--line);
     }
-    #leaderboard h2 {
-      margin: 0 0 1vmin;
-      font-size: 2.6vmin;
+    .pcol {
+      flex: 1 1 0;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0 0.5vmin;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .pcol:last-child {
+      border-right: none;
+    }
+    .pscore {
+      font-size: 3.2vh;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1.1;
+    }
+    .pname {
+      font-size: 1.7vh;
+      color: var(--muted);
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .board {
       margin: 0;
@@ -220,7 +259,7 @@ const initial = snapshot()
     }
     .floater {
       position: fixed;
-      bottom: 1vh;
+      bottom: 9vh;
       font-size: 5vmin;
       will-change: transform, opacity;
       animation: rise 2.6s ease-out forwards;
@@ -259,41 +298,71 @@ const initial = snapshot()
         <p class="sub">Grab your phone.</p></div>`
     }
 
+    // Vote distribution stays hidden until reveal.
     function quizOptions(slide: Extract<Snapshot['slide'], { kind: 'guess-flag' }>): string {
+      const revealed = slide.revealed
       const total = slide.tally.reduce((a, b) => a + b, 0)
       const items = slide.options
         .map((o, i) => {
-          const pct = total ? Math.round((slide.tally[i] / total) * 100) : 0
-          const correct = slide.answerIndex === i ? ' correct' : ''
-          return `<li class="opt${correct}"><span class="fill" style="width:${pct}%"></span>
-            <span class="count">${slide.tally[i]}</span><span class="label">${escapeHtml(o.name)}</span></li>`
+          const correct = revealed && slide.answerIndex === i ? ' correct' : ''
+          const fill = revealed
+            ? `<span class="fill" style="width:${total ? Math.round((slide.tally[i] / total) * 100) : 0}%"></span>`
+            : ''
+          const count = revealed ? `<span class="count">${slide.tally[i]}</span>` : ''
+          return `<li class="opt${correct}">${fill}${count}<span class="label">${escapeHtml(o.name)}</span></li>`
         })
         .join('')
-      return `<div class="round"><img class="flag" src="${flagUrl(slide.flagCode)}" alt="flag" />
+      const answer =
+        revealed && slide.answerIndex !== null ? (slide.options[slide.answerIndex]?.name ?? '') : ''
+      const banner = answer ? `<p class="answername">${escapeHtml(answer)}</p>` : ''
+      return `<div class="round"><div class="flagcol"><img class="flag" src="${flagUrl(slide.flagCode)}" alt="flag" />${banner}</div>
         <ul class="opts">${items}</ul></div>`
     }
 
     function whichFlags(slide: Extract<Snapshot['slide'], { kind: 'which-flag' }>): string {
+      // On reveal, drop the distractors and show just the answer, named.
+      if (slide.revealed && slide.answerIndex !== null) {
+        const i = slide.answerIndex
+        return `<div class="which"><h2 class="prompt">${escapeHtml(slide.prompt)}</h2>
+          <figure class="fcard solo correct"><span class="numbadge">${i + 1}</span>
+            <img src="${flagUrl(slide.flags[i])}" alt="answer" />
+            <figcaption class="answername">${escapeHtml(slide.answerName ?? '')}</figcaption></figure></div>`
+      }
       const cards = slide.flags
-        .map((c, i) => {
-          const correct = slide.answerIndex === i ? ' correct' : ''
-          return `<figure class="fcard${correct}"><span class="numbadge">${i + 1}</span>
-            <img src="${flagUrl(c)}" alt="flag ${i + 1}" />
-            <span class="fcount">${slide.tally[i]}</span></figure>`
-        })
+        .map(
+          (c, i) =>
+            `<figure class="fcard"><span class="numbadge">${i + 1}</span>
+            <img src="${flagUrl(c)}" alt="flag ${i + 1}" /></figure>`,
+        )
         .join('')
       return `<div class="which"><h2 class="prompt">${escapeHtml(slide.prompt)}</h2>
         <div class="flags">${cards}</div></div>`
     }
 
-    function board(rows: Snapshot['leaderboard']): string {
-      return rows
+    function finalBoard(rows: Snapshot['roster']): string {
+      return [...rows]
+        .sort((a, b) => b.score - a.score)
         .map((r) => `<li><span class="pts">${r.score}</span>${escapeHtml(r.nickname)}</li>`)
+        .join('')
+    }
+
+    let roster: Snapshot['roster'] = []
+
+    function renderScoreboard(rows: Snapshot['roster']) {
+      const board = $('scoreboard')
+      board.hidden = rows.length === 0
+      board.innerHTML = rows
+        .map(
+          (r) =>
+            `<div class="pcol"><span class="pscore">${r.score}</span><span class="pname">${escapeHtml(r.nickname)}</span></div>`,
+        )
         .join('')
     }
 
     function render(s: Snapshot) {
       $('badgeCode').textContent = s.code
+      roster = s.roster
+      renderScoreboard(s.roster)
       const slide = s.slide
       const answered = slide && (slide.kind === 'guess-flag' || slide.kind === 'which-flag')
       $('meta').textContent = answered
@@ -304,7 +373,7 @@ const initial = snapshot()
       if (!slide || s.phase === 'lobby') {
         stage.innerHTML =
           s.phase === 'ended'
-            ? `<div class="bigcard"><p class="kicker">Final scores</p><ol class="board">${board(s.leaderboard)}</ol></div>`
+            ? `<div class="bigcard"><p class="kicker">Final scores</p><ol class="board">${finalBoard(s.roster)}</ol></div>`
             : lobby(s.code)
       } else if (slide.kind === 'title') {
         const sub = slide.subtitle ? `<p class="sub">${escapeHtml(slide.subtitle)}</p>` : ''
@@ -320,17 +389,18 @@ const initial = snapshot()
       } else {
         stage.innerHTML = whichFlags(slide)
       }
-
-      const showBoard = s.phase === 'revealed' && s.leaderboard.length > 0
-      $('leaderboard').hidden = !showBoard
-      if (showBoard) $('board').innerHTML = board(s.leaderboard)
     }
 
-    function floatReaction(emoji: string) {
+    // Spawn the emoji within the sending player's scoreboard column so it rises
+    // out of their 1/N band.
+    function floatReaction(emoji: string, slot: number) {
+      const n = Math.max(roster.length, 1)
+      const colW = 100 / n
+      const base = slot >= 0 && slot < n ? slot * colW : Math.random() * 100
       const span = document.createElement('span')
       span.className = 'floater'
       span.textContent = emoji
-      span.style.left = 6 + Math.random() * 88 + 'vw'
+      span.style.left = base + Math.random() * colW + 'vw'
       $('reactions').appendChild(span)
       setTimeout(() => span.remove(), 2700)
     }
