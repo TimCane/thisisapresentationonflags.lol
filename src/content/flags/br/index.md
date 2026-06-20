@@ -12,6 +12,4 @@ features:
   - disc
   - stars
   - text
-notes: >-
-  Green field, yellow rhombus, and a blue celestial globe of 27 stars (states plus the capital). The banner reads 'Ordem e Progresso'.
 ---

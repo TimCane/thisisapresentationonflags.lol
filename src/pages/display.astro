@@ -12,58 +12,47 @@ const initial = snapshot()
 
 <Base title="Flags - Display">
   <main id="screen" data-initial={JSON.stringify(initial)}>
-    <header class="top">
-      <div class="join">
-        Join at <b id="host"></b> &middot; code <b id="code" class="code">{initial.code}</b>
-      </div>
-      <div class="meta">
-        <span id="players">0</span> playing &middot; <span id="answered">0</span> answered
-      </div>
-    </header>
+    <div class="hud">
+      <div id="meta" class="muted"></div>
+      <div class="badge">code <b id="badgeCode">{initial.code}</b></div>
+    </div>
 
-    <section id="stage">
-      <div id="lobby">
-        <h1>thisisapresentationonflags<span class="dim">.lol</span></h1>
-        <p class="big">Code <b class="code">{initial.code}</b></p>
-        <p class="dim">Grab your phone and join.</p>
-      </div>
+    <section id="stage"></section>
 
-      <div id="round" hidden>
-        <img id="flag" alt="current flag" />
-        <ul id="options"></ul>
-      </div>
-
-      <div id="finale" hidden>
-        <h1>Final scores</h1>
-        <ol id="finalBoard" class="board"></ol>
-      </div>
-    </section>
-
-    <aside id="leaderboard" hidden>
-      <h2>Leaders</h2>
-      <ol id="board" class="board"></ol>
-    </aside>
+    <footer id="scoreboard"></footer>
+    <div id="crown" hidden><span>&#128081;</span></div>
 
     <div id="reactions" aria-hidden="true"></div>
   </main>
 
-  <style>
+  <!-- global: most of this page's content is injected by client JS, which does
+       not carry Astro's scope attribute, so scoped styles would not match it. -->
+  <style is:global>
     #screen {
       height: 100%;
       display: flex;
       flex-direction: column;
-      padding: 2vmin 3vmin;
+      padding: 2vmin 3vmin 9vh;
       position: relative;
       overflow: hidden;
     }
-    .top {
+    .hud {
       display: flex;
       justify-content: space-between;
       align-items: center;
       font-size: 2.2vmin;
+    }
+    .muted {
+      color: var(--muted);
+    }
+    .badge {
       color: var(--muted);
     }
     .code {
+      color: var(--accent);
+      letter-spacing: 0.15em;
+    }
+    .badge b {
       color: var(--accent);
       letter-spacing: 0.15em;
     }
@@ -72,47 +61,67 @@ const initial = snapshot()
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-    #lobby {
       text-align: center;
     }
-    #lobby h1 {
-      font-size: 6vmin;
+    .bigcard h1 {
+      font-size: 8vmin;
       margin: 0 0 2vmin;
+      line-height: 1.05;
     }
-    .dim {
+    .bigcard .sub {
+      font-size: 3.4vmin;
       color: var(--muted);
-    }
-    .big {
-      font-size: 5vmin;
       margin: 0;
     }
-    #round {
+    .kicker {
+      text-transform: uppercase;
+      letter-spacing: 0.3em;
+      color: var(--accent);
+      font-size: 2.4vmin;
+      margin: 0 0 1vmin;
+    }
+    .joinbig {
+      font-size: 4vmin;
+      margin-top: 4vmin;
+    }
+    .round {
       display: flex;
       gap: 4vmin;
       align-items: center;
       width: 100%;
       justify-content: center;
     }
-    #flag {
+    .flagcol {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2vmin;
+    }
+    .answername {
+      font-size: 4.5vmin;
+      font-weight: 700;
+      margin: 0;
+    }
+    .flag {
       width: 46vw;
-      max-height: 62vh;
+      max-height: 64vh;
       border-radius: 1.5vmin;
       border: 1px solid var(--line);
       background: #fff;
       box-shadow: 0 1vmin 4vmin rgba(0, 0, 0, 0.4);
     }
-    #options {
+    .opts {
       list-style: none;
       margin: 0;
       padding: 0;
       display: grid;
       gap: 1.6vmin;
       width: 38vw;
+      text-align: left;
     }
     .opt {
       position: relative;
-      padding: 2.4vmin 2.4vmin;
+      padding: 2.4vmin;
       border-radius: 1.2vmin;
       background: var(--panel);
       border: 1px solid var(--line);
@@ -140,22 +149,141 @@ const initial = snapshot()
     .opt.correct .fill {
       background: rgba(46, 204, 113, 0.35);
     }
-    .opt.correct .count {
-      color: var(--good);
+    .which .prompt {
+      font-size: 4.5vmin;
+      margin: 0 0 3vmin;
     }
-    #leaderboard {
+    .flags {
+      display: flex;
+      gap: 3vmin;
+      justify-content: center;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .fcard {
+      margin: 0;
+      position: relative;
+    }
+    .fcard img {
+      width: 26vw;
+      max-height: 36vh;
+      border-radius: 1vmin;
+      border: 2px solid var(--line);
+      background: #fff;
+    }
+    .fcard.correct img {
+      border-color: var(--good);
+      box-shadow: 0 0 3vmin rgba(46, 204, 113, 0.6);
+    }
+    .fcard.solo img {
+      width: 50vw;
+      max-height: 56vh;
+    }
+    .fcard figcaption {
+      margin-top: 1.5vmin;
+    }
+    .numbadge {
       position: absolute;
-      right: 3vmin;
-      bottom: 3vmin;
-      width: 28vw;
-      background: rgba(10, 14, 30, 0.9);
-      border: 1px solid var(--line);
-      border-radius: 1.5vmin;
-      padding: 2vmin;
+      top: -2vmin;
+      left: -2vmin;
+      width: 6vmin;
+      height: 6vmin;
+      border-radius: 50%;
+      background: var(--accent);
+      display: grid;
+      place-items: center;
+      font-size: 3vmin;
+      font-weight: 700;
     }
-    #leaderboard h2 {
-      margin: 0 0 1vmin;
+    .fcount {
+      display: block;
+      margin-top: 1vmin;
       font-size: 2.6vmin;
+      color: var(--muted);
+    }
+    #scoreboard {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 9vh;
+      display: flex;
+      border-top: 1px solid var(--line);
+    }
+    .pcol {
+      flex: 1 1 0;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0 0.5vmin;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .pcol:last-child {
+      border-right: none;
+    }
+    #crown {
+      position: fixed;
+      bottom: 9vh;
+      transform: translateX(-50%);
+      pointer-events: none;
+      z-index: 5;
+    }
+    #crown span {
+      display: block;
+      font-size: 4vh;
+      filter: drop-shadow(0 0.4vh 0.5vh rgba(0, 0, 0, 0.5));
+      animation: bob 1.7s ease-in-out infinite;
+    }
+    @keyframes bob {
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-1.1vh);
+      }
+    }
+    .prize h1 {
+      font-size: 9vmin;
+      margin: 1vmin 0;
+    }
+    .rouletteName {
+      font-size: 8vmin;
+      font-weight: 800;
+      min-height: 1.2em;
+    }
+    .rouletteName.landed {
+      color: var(--good);
+      animation: pop 0.45s ease;
+    }
+    @keyframes pop {
+      0% {
+        transform: scale(0.6);
+      }
+      60% {
+        transform: scale(1.25);
+      }
+      100% {
+        transform: scale(1);
+      }
+    }
+    .pscore {
+      font-size: 3.2vh;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1.1;
+    }
+    .pname {
+      font-size: 1.7vh;
+      color: var(--muted);
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .board {
       margin: 0;
@@ -170,20 +298,17 @@ const initial = snapshot()
       color: var(--accent);
       font-weight: 700;
     }
-    #finale h1 {
-      font-size: 5vmin;
-      text-align: center;
-    }
     #reactions {
-      position: absolute;
+      position: fixed;
       inset: 0;
       pointer-events: none;
       overflow: hidden;
     }
     .floater {
-      position: absolute;
-      bottom: -6vmin;
+      position: fixed;
+      bottom: 9vh;
       font-size: 5vmin;
+      will-change: transform, opacity;
       animation: rise 2.6s ease-out forwards;
     }
     @keyframes rise {
@@ -191,32 +316,22 @@ const initial = snapshot()
         transform: translateY(0) scale(0.6);
         opacity: 0;
       }
-      15% {
+      12% {
         opacity: 1;
       }
       100% {
-        transform: translateY(-78vh) scale(1.2);
+        transform: translateY(-82vh) scale(1.25);
         opacity: 0;
       }
     }
   </style>
 
   <script>
-    import { connect } from '@/lib/client'
-    import { flagUrl } from '@/lib/client'
+    import { connect, flagUrl } from '@/lib/client'
+    import { REACTION_GROW, REACTION_MAX_SCALE } from '@/lib/constants'
     import type { Snapshot } from '@/lib/types'
 
     const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
-    $('host').textContent = location.host
-
-    function board(el: HTMLElement, rows: Snapshot['leaderboard']) {
-      el.innerHTML = ''
-      for (const r of rows) {
-        const li = document.createElement('li')
-        li.innerHTML = `<span class="pts">${r.score}</span>${escapeHtml(r.nickname)}`
-        el.appendChild(li)
-      }
-    }
 
     function escapeHtml(s: string): string {
       return s.replace(
@@ -225,48 +340,192 @@ const initial = snapshot()
       )
     }
 
-    function render(s: Snapshot) {
-      $('code').textContent = s.code
-      $('players').textContent = String(s.players)
-      const q = s.question
-      $('answered').textContent = String(q?.answered ?? 0)
-
-      const inRound = (s.phase === 'guessing' || s.phase === 'revealed') && !!q
-      $('lobby').hidden = inRound || s.phase === 'ended'
-      $('round').hidden = !inRound
-      $('finale').hidden = s.phase !== 'ended'
-
-      if (inRound && q) {
-        ;($('flag') as HTMLImageElement).src = flagUrl(q.flagCode)
-        const total = q.tally.reduce((a, b) => a + b, 0)
-        const correctIndex = q.options.findIndex((o) => o.code === q.flagCode)
-        const ul = $('options')
-        ul.innerHTML = ''
-        q.options.forEach((o, i) => {
-          const pct = total ? Math.round((q.tally[i] / total) * 100) : 0
-          const li = document.createElement('li')
-          li.className = 'opt' + (s.phase === 'revealed' && i === correctIndex ? ' correct' : '')
-          li.innerHTML =
-            `<span class="fill" style="width:${pct}%"></span>` +
-            `<span class="count">${q.tally[i]}</span>` +
-            `<span class="label">${escapeHtml(o.name)}</span>`
-          ul.appendChild(li)
-        })
-      }
-
-      const showBoard = (s.phase === 'revealed' || s.phase === 'ended') && s.leaderboard.length > 0
-      $('leaderboard').hidden = !showBoard || s.phase === 'ended'
-      if (showBoard) board($('board'), s.leaderboard)
-      if (s.phase === 'ended') board($('finalBoard'), s.leaderboard)
+    function lobby(code: string): string {
+      return `<div class="bigcard"><h1>thisisapresentationonflags<span class="muted">.lol</span></h1>
+        <p class="joinbig">Use code <b class="code">${code}</b> to join</p>
+        <p class="sub">Grab your phone.</p></div>`
     }
 
-    function floatReaction(emoji: string) {
+    // Vote distribution stays hidden until reveal.
+    function quizOptions(slide: Extract<Snapshot['slide'], { kind: 'guess-flag' }>): string {
+      const revealed = slide.revealed
+      const total = slide.tally.reduce((a, b) => a + b, 0)
+      const items = slide.options
+        .map((o, i) => {
+          const correct = revealed && slide.answerIndex === i ? ' correct' : ''
+          const fill = revealed
+            ? `<span class="fill" style="width:${total ? Math.round((slide.tally[i] / total) * 100) : 0}%"></span>`
+            : ''
+          const count = revealed ? `<span class="count">${slide.tally[i]}</span>` : ''
+          return `<li class="opt${correct}">${fill}${count}<span class="label">${escapeHtml(o.name)}</span></li>`
+        })
+        .join('')
+      const answer =
+        revealed && slide.answerIndex !== null ? (slide.options[slide.answerIndex]?.name ?? '') : ''
+      const banner = answer ? `<p class="answername">${escapeHtml(answer)}</p>` : ''
+      return `<div class="round"><div class="flagcol"><img class="flag" src="${flagUrl(slide.flagCode)}" alt="flag" />${banner}</div>
+        <ul class="opts">${items}</ul></div>`
+    }
+
+    function whichFlags(slide: Extract<Snapshot['slide'], { kind: 'which-flag' }>): string {
+      // On reveal, drop the distractors and show just the answer, named.
+      if (slide.revealed && slide.answerIndex !== null) {
+        const i = slide.answerIndex
+        return `<div class="which"><h2 class="prompt">${escapeHtml(slide.prompt)}</h2>
+          <figure class="fcard solo correct"><span class="numbadge">${i + 1}</span>
+            <img src="${flagUrl(slide.flags[i])}" alt="answer" />
+            <figcaption class="answername">${escapeHtml(slide.answerName ?? '')}</figcaption></figure></div>`
+      }
+      const cards = slide.flags
+        .map(
+          (c, i) =>
+            `<figure class="fcard"><span class="numbadge">${i + 1}</span>
+            <img src="${flagUrl(c)}" alt="flag ${i + 1}" /></figure>`,
+        )
+        .join('')
+      return `<div class="which"><h2 class="prompt">${escapeHtml(slide.prompt)}</h2>
+        <div class="flags">${cards}</div></div>`
+    }
+
+    function finalBoard(rows: Snapshot['roster']): string {
+      return [...rows]
+        .sort((a, b) => b.score - a.score)
+        .map((r) => `<li><span class="pts">${r.score}</span>${escapeHtml(r.nickname)}</li>`)
+        .join('')
+    }
+
+    let roster: Snapshot['roster'] = []
+    let prizePlaying = false
+
+    function renderScoreboard(rows: Snapshot['roster']) {
+      const board = $('scoreboard')
+      board.hidden = rows.length === 0
+      board.innerHTML = rows
+        .map(
+          (r) =>
+            `<div class="pcol"><span class="pscore">${r.score}</span><span class="pname">${escapeHtml(r.nickname)}</span></div>`,
+        )
+        .join('')
+
+      // Float the crown above the sole leader's column; hidden on a tie or 0-0.
+      const top = rows.reduce((m, r) => Math.max(m, r.score), 0)
+      const leaders = rows.filter((r) => r.score === top)
+      const crown = $('crown')
+      if (top > 0 && leaders.length === 1 && rows.length > 0) {
+        const idx = rows.findIndex((r) => r.score === top)
+        crown.style.left = (idx + 0.5) * (100 / rows.length) + 'vw'
+        crown.hidden = false
+      } else {
+        crown.hidden = true
+      }
+    }
+
+    function render(s: Snapshot) {
+      $('badgeCode').textContent = s.code
+      roster = s.roster
+      renderScoreboard(s.roster)
+      const slide = s.slide
+      const answered = slide && (slide.kind === 'guess-flag' || slide.kind === 'which-flag')
+      $('meta').textContent = answered
+        ? `${s.players} playing - ${slide.answered} answered`
+        : `${s.players} playing`
+
+      const stage = $('stage')
+      if (s.phase === 'prize' && s.prize) {
+        $('meta').textContent = ''
+        if (!prizePlaying) {
+          prizePlaying = true
+          if (s.prize.everyone) {
+            stage.innerHTML = `<div class="bigcard prize"><p class="kicker">Prize #${s.prize.count}</p><h1>PRIZE TIME</h1><div class="rouletteName landed">EVERYONE WINS! \u{1F389}</div></div>`
+            celebrate()
+            setTimeout(celebrate, 700)
+          } else {
+            stage.innerHTML = `<div class="bigcard prize"><p class="kicker">Prize #${s.prize.count}</p><h1>PRIZE TIME</h1><div id="rouletteName" class="rouletteName">&nbsp;</div></div>`
+            startRoulette(s.prize.winner ?? '')
+          }
+        }
+        return
+      }
+      prizePlaying = false
+
+      if (!slide || s.phase === 'lobby') {
+        stage.innerHTML =
+          s.phase === 'ended'
+            ? `<div class="bigcard"><p class="kicker">Final scores</p><ol class="board">${finalBoard(s.roster)}</ol></div>`
+            : lobby(s.code)
+      } else if (slide.kind === 'title') {
+        const sub = slide.subtitle ? `<p class="sub">${escapeHtml(slide.subtitle)}</p>` : ''
+        const join = slide.showCode
+          ? `<p class="joinbig">Use code <b class="code">${s.code}</b> to join</p>`
+          : ''
+        stage.innerHTML = `<div class="bigcard"><h1>${escapeHtml(slide.title)}</h1>${sub}${join}</div>`
+      } else if (slide.kind === 'section') {
+        const sub = slide.subtitle ? `<p class="sub">${escapeHtml(slide.subtitle)}</p>` : ''
+        stage.innerHTML = `<div class="bigcard"><p class="kicker">Section</p><h1>${escapeHtml(slide.title)}</h1>${sub}</div>`
+      } else if (slide.kind === 'guess-flag') {
+        stage.innerHTML = quizOptions(slide)
+      } else {
+        stage.innerHTML = whichFlags(slide)
+      }
+    }
+
+    function spawnFloater(emoji: string, leftVw: number, scale = 1) {
       const span = document.createElement('span')
       span.className = 'floater'
       span.textContent = emoji
-      span.style.left = 10 + Math.random() * 80 + 'vw'
+      span.style.left = leftVw + 'vw'
+      span.style.fontSize = 5 * scale + 'vmin'
       $('reactions').appendChild(span)
       setTimeout(() => span.remove(), 2700)
+    }
+
+    // Spawn the emoji within the sending player's scoreboard column so it rises
+    // out of their 1/N band; a longer same-emoji streak makes it bigger.
+    function floatReaction(emoji: string, slot: number, streak: number) {
+      const n = Math.max(roster.length, 1)
+      const colW = 100 / n
+      const base = slot >= 0 && slot < n ? slot * colW : Math.random() * 100
+      const scale = Math.min(1 + (streak - 1) * REACTION_GROW, REACTION_MAX_SCALE)
+      spawnFloater(emoji, base + Math.random() * colW, scale)
+    }
+
+    function celebrate() {
+      for (let i = 0; i < 16; i++) {
+        setTimeout(() => spawnFloater('\u{1F389}', 4 + Math.random() * 92), i * 80)
+      }
+    }
+
+    // Flash through the roster, decelerate, and land on the server-chosen winner.
+    function startRoulette(winner: string) {
+      const names = roster.map((r) => r.nickname)
+      const cell = () => document.getElementById('rouletteName')
+      if (!cell()) return
+      if (names.length <= 1) {
+        const e = cell()!
+        e.textContent = winner
+        e.classList.add('landed')
+        celebrate()
+        return
+      }
+      let elapsed = 0
+      const duration = 5200
+      const step = () => {
+        const e = cell()
+        if (!e) return
+        // Quadratic ramp: snappy at the start, dragging out near the end.
+        const t = elapsed / duration
+        const delay = 90 + t * t * 620
+        elapsed += delay
+        if (elapsed < duration) {
+          e.textContent = names[Math.floor(Math.random() * names.length)]
+          setTimeout(step, delay)
+        } else {
+          e.textContent = winner
+          e.classList.add('landed')
+          celebrate()
+        }
+      }
+      step()
     }
 
     const initial = JSON.parse($('screen').dataset.initial!) as Snapshot

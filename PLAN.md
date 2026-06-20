@@ -26,35 +26,43 @@ passphrase, no login.
 
 ## Content
 
-Collection at `src/content/flags/<code>/`:
+Two collections:
 
-- `index.md` frontmatter: `name`, `continent`, `code`, `flag`, `colours` (enum),
-  `features` (tags), and now optional `notes` (presenter talking points).
-- `flag.svg` - the artwork.
-- 197 countries seeded; `colours`/`features` drive distractor selection.
+- **flags** (`src/content/flags/<code>/`): `name`, `continent`, `code`, `flag`,
+  `colours` (enum), `features` (tags). 197 seeded; `colours`/`features` drive
+  distractor selection.
+- **slides** (`src/content/slides/NN-name.md`): the talk deck. One file per
+  slide, ordered by filename, with a `kind`-discriminated schema. Every slide
+  may carry presenter `notes`.
 
-The deck for the talk is a curated, ordered subset (`src/lib/deck.ts`, ~20
-varied flags). Only deck flags carry `notes`.
+### Slide types
 
-## Question lifecycle
+- `title` - heading + subtitle; optional `showCode` renders the join code big.
+- `section` - announces a category ("Flags everyone should know").
+- `guess-flag` (mode 1) - "What flag is this?". `answer` flag shown large;
+  audience picks the country name. Author may list explicit `options`; otherwise
+  3 similar-flag distractors auto-fill.
+- `which-flag` (mode 2) - "Which flag is X?". `flags` shown numbered 1..N on the
+  screen; audience picks a number. Prompt defaults to the answer's name.
 
-Presenter-driven, two taps per flag:
+## Slide lifecycle
 
-1. **Advance** - presenter taps next; server picks the next deck flag, builds 4
-   options (correct + 3 distractors), opens guessing immediately. Options appear
-   on audience phones.
-2. **Reveal** - presenter taps reveal; correct answer highlighted everywhere,
-   leaderboard updates.
+Presenter-driven via `/presenter`:
 
-Guesses lock on submit (first tap is final). Scoring is a flat 1 point per
-correct answer; the leaderboard ranks players by nickname.
+- **Advance** moves to the next slide. Static slides (title/section) just show.
+  Quiz slides open guessing immediately - options/numbers appear on phones.
+- **Reveal** (quiz only) highlights the correct answer everywhere and updates the
+  leaderboard.
 
-## Multiple choice
+Guesses lock on submit. Scoring is a flat 1 point per correct answer, accumulated
+across the whole deck; the leaderboard ranks players by nickname.
 
-"Which country is this flag?" - 4 options, one correct. Distractors are chosen
-server-side at advance time to be visually similar: rank other flags by shared
-`colours`/`features`, take the closest, top up by same continent then random so
-there are always 3. Options are shuffled. Everyone sees the same 4.
+## Distractors (mode 1 auto fill)
+
+When a `guess-flag` slide omits `options`, the server picks 3 visually similar
+flags at advance time: rank others by shared `colours`/`features` (+ small
+same-continent bonus), break ties randomly, take the closest. Options are
+shuffled; everyone sees the same 4.
 
 ## Reactions
 
@@ -67,7 +75,9 @@ Astro SSR (`@astrojs/node` standalone). One in-memory global session (ephemeral,
 gone on restart).
 
 - **Down:** one SSE stream (`/api/events`) broadcasts session state (code, phase,
-  current flag, options, live tally, leaderboard) plus transient reaction events.
+  slide payload, live tally, leaderboard) plus transient reaction events. The
+  answer index is withheld until reveal; presenter answer + notes are embedded in
+  the `/presenter` page at render, never on the wire.
 - **Up:** `POST` routes for join, guess, react, and presenter control.
 
 Player identity is a uuid minted in the browser (localStorage) alongside the
@@ -75,9 +85,11 @@ nickname; sent with every action. Server routes are `prerender = false`.
 
 ## State model (in-memory)
 
-- `code`, `phase` (`lobby` | `guessing` | `revealed` | `ended`), `deckIndex`.
-- current flag `code`, the 4 option codes, the answer.
-- `guesses`: playerId -> optionIndex (current question, locked).
+- `code`, `phase` (`lobby` | `info` | `guessing` | `revealed` | `ended`),
+  `index`, `total`.
+- `slide`: the built current slide (static fields, plus resolved options/flags +
+  answer for quiz slides).
+- `guesses`: playerId -> optionIndex (current slide, locked).
 - `players`: playerId -> { nickname, score }.
 - subscribers: the set of open SSE streams.
 - reactions are broadcast transiently, not stored.

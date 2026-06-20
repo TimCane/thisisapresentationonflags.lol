@@ -1,17 +1,32 @@
 ---
 import Base from '@/layouts/Base.astro'
 import { getCollection } from 'astro:content'
-import { DECK } from '@/lib/deck'
 
 export const prerender = false
 
-const all = await getCollection('flags')
-const byCode = new Map(all.map((e) => [e.data.code, e.data]))
-const notes = DECK.map((code) => ({
-  code,
-  name: byCode.get(code)?.name ?? code,
-  notes: byCode.get(code)?.notes ?? '',
-}))
+// Slide order must match the runtime builder (sorted by entry id). Embedded so
+// the presenter can see the answer + notes without leaking them on the wire.
+const slides = await getCollection('slides')
+slides.sort((a, b) => a.id.localeCompare(b.id))
+const flags = await getCollection('flags')
+const nameByCode = new Map(flags.map((e) => [e.data.code, e.data.name]))
+const name = (c: string) => nameByCode.get(c) ?? c
+
+const slidesMeta = slides.map((e) => {
+  const d = e.data
+  if (d.kind === 'guess-flag')
+    return { kind: d.kind, notes: d.notes ?? '', answer: name(d.answer), answerCode: d.answer }
+  if (d.kind === 'which-flag')
+    return {
+      kind: d.kind,
+      notes: d.notes ?? '',
+      prompt: d.prompt ?? `Which flag is ${name(d.answer)}?`,
+      answer: name(d.answer),
+      answerNumber: d.flags.indexOf(d.answer) + 1,
+      flags: d.flags,
+    }
+  return { kind: d.kind, notes: d.notes ?? '', title: d.title }
+})
 ---
 
 <Base title="Flags - Presenter">
@@ -32,23 +47,24 @@ const notes = DECK.map((code) => ({
       </header>
 
       <div id="now" class="card">
-        <img id="flag" alt="current flag" />
-        <div class="info">
-          <p class="label">Answer</p>
-          <h2 id="answer">-</h2>
-          <p id="notes" class="notes"></p>
-        </div>
+        <p class="kicker" id="kind"></p>
+        <h2 id="headline">-</h2>
+        <div id="thumbs" class="thumbs"></div>
+        <p id="notes" class="notes"></p>
       </div>
 
       <div id="controls">
         <button id="reveal" class="primary" hidden>Reveal answer</button>
-        <button id="next" class="primary" hidden>Next flag</button>
+        <button id="next" class="primary" hidden>Next</button>
+        <button id="prizes" class="ghost">Prizes: on</button>
         <button id="reset" class="ghost">New session</button>
       </div>
     </section>
   </main>
 
-  <style>
+  <!-- global: thumbnails are injected by client JS without Astro's scope
+       attribute, so scoped styles would not match them. -->
+  <style is:global>
     #app {
       max-width: 560px;
       margin: 0 auto;
@@ -110,40 +126,56 @@ const notes = DECK.map((code) => ({
       padding: 10px 4px;
       color: var(--muted);
     }
-    #now {
-      display: flex;
-      gap: 16px;
-      align-items: flex-start;
-      margin-bottom: 16px;
-    }
-    #flag {
-      width: 40%;
-      border-radius: 10px;
-      border: 1px solid var(--line);
-      background: #fff;
-    }
-    .info {
-      flex: 1;
-    }
-    .label {
-      color: var(--muted);
+    .kicker {
+      color: var(--accent);
       margin: 0;
       text-transform: uppercase;
       font-size: 0.75rem;
       letter-spacing: 0.1em;
     }
-    #answer {
-      margin: 2px 0 10px;
+    #headline {
+      margin: 4px 0 12px;
       font-size: 1.5rem;
     }
+    .thumbs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .thumbs figure {
+      margin: 0;
+      position: relative;
+    }
+    .thumbs img {
+      height: 56px;
+      border-radius: 6px;
+      border: 2px solid var(--line);
+      background: #fff;
+    }
+    .thumbs figure.answer img {
+      border-color: var(--good);
+    }
+    .thumbs .n {
+      position: absolute;
+      top: -6px;
+      left: -6px;
+      background: var(--accent);
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: 0.75rem;
+      display: grid;
+      place-items: center;
+    }
     .notes {
-      color: var(--fg);
       line-height: 1.5;
       margin: 0;
     }
     #controls {
       display: grid;
       gap: 10px;
+      margin-top: 16px;
     }
   </style>
 
@@ -153,13 +185,17 @@ const notes = DECK.map((code) => ({
 
     const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 
-    type Note = { code: string; name: string; notes: string }
-    const notes = new Map<string, Note>(
-      (JSON.parse(document.getElementById('notesData')!.textContent!) as Note[]).map((n) => [
-        n.code,
-        n,
-      ]),
-    )
+    type Meta = {
+      kind: string
+      notes: string
+      title?: string
+      answer?: string
+      answerCode?: string
+      answerNumber?: number
+      prompt?: string
+      flags?: string[]
+    }
+    const meta = JSON.parse($('slidesData')!.textContent!) as Meta[]
 
     let snap: Snapshot | null = null
     let code = localStorage.getItem('code') ?? ''
@@ -187,6 +223,9 @@ const notes = DECK.map((code) => ({
     const control = (action: string) => post('/api/control', { code, action })
     $('next').addEventListener('click', () => control('advance'))
     $('reveal').addEventListener('click', () => control('reveal'))
+    $('prizes').addEventListener('click', () =>
+      control(snap?.prizesEnabled ? 'prizes-off' : 'prizes-on'),
+    )
     $('reset').addEventListener('click', () => {
       if (confirm('Start a new session? Scores reset and the code changes.')) control('reset')
     })
@@ -195,28 +234,64 @@ const notes = DECK.map((code) => ({
       if (!snap || !unlocked) return
       $('roomCode').textContent = snap.code
       $('progress').textContent =
-        snap.phase === 'lobby'
-          ? 'Not started'
-          : snap.phase === 'ended'
-            ? 'Finished'
-            : `Flag ${snap.deckIndex + 1} of ${snap.deckSize}`
-      const q = snap.question
-      $('answered').textContent = String(q?.answered ?? 0)
-      $('players').textContent = String(snap.players)
+        snap.phase === 'prize'
+          ? 'Prize time'
+          : snap.phase === 'lobby'
+            ? 'Not started'
+            : snap.phase === 'ended'
+              ? 'Finished'
+              : `Slide ${snap.index + 1} of ${snap.total}`
 
-      if (q) {
-        ;($('flag') as HTMLImageElement).src = flagUrl(q.flagCode)
-        const n = notes.get(q.flagCode)
-        $('answer').textContent = n?.name ?? q.flagCode
-        $('notes').textContent = n?.notes ?? ''
-        $('now').hidden = false
+      const slide = snap.slide
+      const answered =
+        snap.phase !== 'prize' &&
+        slide &&
+        (slide.kind === 'guess-flag' || slide.kind === 'which-flag')
+      $('answered').textContent = String(answered ? slide.answered : 0)
+      $('players').textContent = String(snap.players)
+      $('prizes').textContent = `Prizes: ${snap.prizesEnabled ? 'on' : 'off'}`
+
+      const m: Meta | undefined = snap.index >= 0 ? meta[snap.index] : undefined
+      const thumbs = $('thumbs')
+      thumbs.innerHTML = ''
+      if (snap.phase === 'prize' && snap.prize) {
+        $('kind').textContent = `Prize #${snap.prize.count}`
+        $('headline').textContent = snap.prize.everyone
+          ? 'Everyone wins!'
+          : `Winner: ${snap.prize.winner}`
+        $('notes').textContent = snap.prize.everyone
+          ? 'Hand a pack to everyone, then tap Continue.'
+          : 'Hand over a booster pack, then tap Continue.'
+      } else if (!slide || !m) {
+        $('kind').textContent = snap.phase === 'ended' ? 'Finished' : 'Lobby'
+        $('headline').textContent =
+          snap.phase === 'ended' ? 'Final scores are up' : 'Waiting to start'
+        $('notes').textContent = ''
+      } else if (slide.kind === 'title' || slide.kind === 'section') {
+        $('kind').textContent = slide.kind === 'title' ? 'Title' : 'Section'
+        $('headline').textContent = m.title ?? ''
+        $('notes').textContent = m.notes
+      } else if (slide.kind === 'guess-flag') {
+        $('kind').textContent = 'What flag is this?'
+        $('headline').textContent = `Answer: ${m.answer}`
+        thumbs.innerHTML = `<figure class="answer"><img src="${flagUrl(m.answerCode!)}" alt="flag" /></figure>`
+        $('notes').textContent = m.notes
       } else {
-        $('now').hidden = true
+        $('kind').textContent = 'Which flag is...'
+        $('headline').textContent = `${m.prompt} -> #${m.answerNumber} (${m.answer})`
+        thumbs.innerHTML = (m.flags ?? [])
+          .map(
+            (c, i) =>
+              `<figure class="${i + 1 === m.answerNumber ? 'answer' : ''}"><span class="n">${i + 1}</span><img src="${flagUrl(c)}" alt="flag" /></figure>`,
+          )
+          .join('')
+        $('notes').textContent = m.notes
       }
 
       $('reveal').hidden = snap.phase !== 'guessing'
       $('next').hidden = snap.phase === 'guessing'
-      $('next').textContent = snap.phase === 'lobby' ? 'Start' : 'Next flag'
+      $('next').textContent =
+        snap.phase === 'lobby' ? 'Start' : snap.phase === 'prize' ? 'Continue' : 'Next'
       ;($('next') as HTMLButtonElement).disabled = snap.phase === 'ended'
     }
 
@@ -224,7 +299,6 @@ const notes = DECK.map((code) => ({
       snap = s
       if (!unlocked && code && s.code === code) tryUnlock(code, true)
       if (unlocked && code && s.code !== code) {
-        // reset minted a new code; adopt it so controls keep working
         code = s.code
         localStorage.setItem('code', code)
       }
@@ -232,5 +306,5 @@ const notes = DECK.map((code) => ({
     })
   </script>
 
-  <script id="notesData" is:inline type="application/json" set:html={JSON.stringify(notes)} />
+  <script id="slidesData" is:inline type="application/json" set:html={JSON.stringify(slidesMeta)} />
 </Base>

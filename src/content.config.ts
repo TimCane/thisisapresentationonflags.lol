@@ -36,9 +36,44 @@ const flags = defineCollection({
       flag: image(),
       colours: z.array(z.enum(COLOURS)).min(1),
       features: z.array(z.string()).min(1),
-      // Presenter talking points; only carried by curated deck flags.
-      notes: z.string().optional(),
     }),
 })
 
-export const collections = { flags }
+// The talk deck. One file per slide, ordered by filename (NN-...). `kind`
+// discriminates the slide; quiz slides reference flag codes from `flags`.
+const code = z.string()
+const slides = defineCollection({
+  loader: glob({ pattern: '*.md', base: './src/content/slides' }),
+  schema: z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('title'),
+      title: z.string(),
+      subtitle: z.string().optional(),
+      showCode: z.boolean().default(false),
+      notes: z.string().optional(),
+    }),
+    z.object({
+      kind: z.literal('section'),
+      title: z.string(),
+      subtitle: z.string().optional(),
+      notes: z.string().optional(),
+    }),
+    z.object({
+      kind: z.literal('guess-flag'),
+      answer: code,
+      // Optional explicit options; when omitted, similar-flag distractors fill in.
+      options: z.array(code).optional(),
+      notes: z.string().optional(),
+    }),
+    z.object({
+      kind: z.literal('which-flag'),
+      flags: z.array(code).min(2),
+      answer: code,
+      // Defaults to "Which flag is <answer name>?".
+      prompt: z.string().optional(),
+      notes: z.string().optional(),
+    }),
+  ]),
+})
+
+export const collections = { flags, slides }
